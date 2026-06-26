@@ -153,21 +153,20 @@ const DEFAULT_SERVICE='Gériatrie B';
    Pour le réel : remplacer par SupabaseSync (même interface) — voir sync-demo.html
    pour le SQL (table services + RLS + temps réel) et les 3 étapes d'activation. */
 const LocalSync = {
-  code:null,key:null,_cb:null,_bc:null,
-  async connect(code){ this.code=code; this.key='soinsSvc:'+code;
-    try{ this._bc=new BroadcastChannel(this.key); this._bc.onmessage=e=>{ if(this._cb)this._cb(e.data); }; }catch(_){}
-    window.addEventListener('storage',e=>{ if(e.key===this.key&&e.newValue){ try{ if(this._cb)this._cb(JSON.parse(e.newValue)); }catch(_){} } });
+  code:null, prefix:null, _cb:null, _bc:null,
+  async connect(code){ this.code=code; this.prefix='soinsSvc:'+code+':';
+    try{ this._bc=new BroadcastChannel('soinsSvc:'+code); this._bc.onmessage=e=>{ if(this._cb&&e.data&&e.data.key) this._cb(e.data.key, e.data.data); }; }catch(_){}
+    window.addEventListener('storage',e=>{ if(e.key&&this.prefix&&e.key.indexOf(this.prefix)===0&&e.newValue){ try{ if(this._cb) this._cb(e.key.slice(this.prefix.length), JSON.parse(e.newValue)); }catch(_){} } });
     return true; },
-  async load(){ try{ return JSON.parse(localStorage.getItem(this.key)||'null'); }catch(_){ return null; } },
-  async push(data){ try{ localStorage.setItem(this.key, JSON.stringify(data)); }catch(_){}
-    if(this._bc) this._bc.postMessage(data); },
+  async loadAll(){ const map={}; try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.indexOf(this.prefix)===0){ try{ map[k.slice(this.prefix.length)]=JSON.parse(localStorage.getItem(k)); }catch(_){} } } }catch(_){} return map; },
+  async pushRow(key,data){ data._origin=myDevice; try{ localStorage.setItem(this.prefix+key, JSON.stringify(data)); }catch(_){}
+    if(this._bc) this._bc.postMessage({key,data}); },
   onChange(cb){ this._cb=cb; }
 };
 /* --- Adaptateur SUPABASE (production) : vraie synchro entre téléphones --- */
 const SUPABASE_URL='https://jfxzlclztacrhsozytnr.supabase.co';
 const SUPABASE_KEY='sb_publishable_8oZ4TUgq2_Z5cbW6CuCr7A_-WulWl0K'; /* clé publique par conception */
 const TEAM_EMAIL='equipe@soins.fr';
-const SVC_ROW='main'; /* une seule fiche de service partagée */
 const SupabaseSync = {
   code:null, sb:null, _cb:null, _chan:null,
   async connect(code){ this.code=code;
@@ -175,16 +174,16 @@ const SupabaseSync = {
     const {error}=await this.sb.auth.signInWithPassword({email:TEAM_EMAIL,password:code});
     if(error) throw error;
     return true; },
-  async load(){ try{ const {data}=await this.sb.from('services').select('state').eq('code',SVC_ROW).maybeSingle();
-      if(data&&data.state){ try{localStorage.setItem('soinsCache',JSON.stringify(data.state));}catch(_){} return data.state; } }
-    catch(_){ try{ return JSON.parse(localStorage.getItem('soinsCache')||'null'); }catch(e){} }
-    return null; },
-  async push(data){ data._origin=myDevice; try{localStorage.setItem('soinsCache',JSON.stringify(data));}catch(_){}
-    try{ await this.sb.from('services').upsert({code:SVC_ROW,state:data,updated_at:new Date().toISOString()},{onConflict:'code'}); }catch(_){} },
+  async loadAll(){ try{ const {data}=await this.sb.from('services').select('code,state'); const map={}; (data||[]).forEach(r=>{ map[r.code]=r.state; });
+      try{localStorage.setItem('soinsCache',JSON.stringify(map));}catch(_){} return map; }
+    catch(_){ try{ return JSON.parse(localStorage.getItem('soinsCache')||'{}'); }catch(e){ return {}; } } },
+  async pushRow(key,data){ data._origin=myDevice;
+    try{ const c=JSON.parse(localStorage.getItem('soinsCache')||'{}'); c[key]=data; localStorage.setItem('soinsCache',JSON.stringify(c)); }catch(_){}
+    try{ await this.sb.from('services').upsert({code:key,state:data,updated_at:new Date().toISOString()},{onConflict:'code'}); }catch(_){} },
   onChange(cb){ this._cb=cb;
-    this._chan=this.sb.channel('svc-main')
-      .on('postgres_changes',{event:'*',schema:'public',table:'services',filter:'code=eq.'+SVC_ROW},
-          payload=>{ const st=payload.new&&payload.new.state; if(!st||st._origin===myDevice) return; if(this._cb) this._cb(st); })
+    this._chan=this.sb.channel('svc-all')
+      .on('postgres_changes',{event:'*',schema:'public',table:'services'},
+          payload=>{ const row=payload.new; if(!row||!row.state||row.state._origin===myDevice) return; if(this._cb) this._cb(row.code, row.state); })
       .subscribe(); }
 };
 /* Si la lib Supabase est chargée → vraie synchro ; sinon repli local (démo entre onglets). */
@@ -203,35 +202,67 @@ let rec=null;
 
 /* ----------------------------- verrou par patient ----------------------------- */
 const LOCK_TTL=30000; /* un verrou expire après 30 s sans rafraîchissement */
-const myDevice=(function(){ let d=DB.load('soinsDeviceId',null); if(!d){ d='dev'+Math.random().toString(36).slice(2,9); DB.save('soinsDeviceId',d);} return d; })();
+const myDevice='dev'+Math.random().toString(36).slice(2,9)+Date.now().toString(36); /* identité par session/onglet */
 function lockOf(pid){ return (S.locks||{})[pid]; }
 function lockActive(l){ return !!l && (Date.now()-l.ts)<LOCK_TTL; }
 function lockedByOther(pid){ const l=lockOf(pid); return lockActive(l) && l.device!==myDevice; }
-function acquireLock(pid){ if(!pid) return false; S.locks=S.locks||{}; if(lockedByOther(pid)) return false; S.locks[pid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; S._heldPid=pid; save(); return true; }
-function takeLock(pid){ S.locks=S.locks||{}; S.locks[pid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; S._heldPid=pid; save(); }
-function releaseLock(pid){ if(S.locks&&S.locks[pid]&&S.locks[pid].device===myDevice) delete S.locks[pid]; if(S._heldPid===pid)S._heldPid=null; save(); }
+function acquireLock(pid){ if(!pid) return false; S.locks=S.locks||{}; if(lockedByOther(pid)) return false; S.locks[pid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; S._heldPid=pid; saveLocks(); return true; }
+function takeLock(pid){ S.locks=S.locks||{}; S.locks[pid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; S._heldPid=pid; saveLocks(); }
+function releaseLock(pid){ if(S.locks&&S.locks[pid]&&S.locks[pid].device===myDevice) delete S.locks[pid]; if(S._heldPid===pid)S._heldPid=null; saveLocks(); }
 function ensureEditable(){ const pid=S.curPatient; if(lockedByOther(pid)) return false; const l=lockOf(pid); if(!l||l.device!==myDevice) acquireLock(pid); return true; }
 /* battement de cœur : maintient mon verrou, rafraîchit l'affichage, libère les verrous expirés */
 setInterval(()=>{ if(!S.serviceCode) return;
-  if(S.screen==='patient' && S.curPatient){ const l=lockOf(S.curPatient); if(l&&l.device===myDevice){ l.ts=Date.now(); save(); } }
+  if(S.screen==='patient' && S.curPatient){ const l=lockOf(S.curPatient); if(l&&l.device===myDevice){ l.ts=Date.now(); saveLocks(); } }
   const ae=document.activeElement; const typing=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA');
   if((S.screen==='room'||S.screen==='patient') && !typing) render();
 }, 8000);
 
-/* DONNÉES PARTAGÉES (synchronisées) vs LOCALES (cet appareil : soignant, période vue, écran) */
-function sharedSnapshot(){ return {service:S.service,caregivers:S.caregivers,periods:S.periods,careLists:S.careLists,rooms:S.rooms,alerts:S.alerts,locks:S.locks||{}}; }
-function applyShared(o){ if(!o)return; if(o.service!=null)S.service=o.service; if(o.caregivers)S.caregivers=o.caregivers; if(o.periods&&o.periods.length)S.periods=o.periods; if(o.careLists)S.careLists=o.careLists; if(o.rooms)S.rooms=o.rooms; if(o.alerts)S.alerts=o.alerts;
-  if(o.locks)S.locks=o.locks; S.locks=S.locks||{};
-  if(S._heldPid && !lockedByOther(S._heldPid)){ S.locks[S._heldPid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; }
-  if(!S.periods.find(p=>p.id===S.period))S.period=S.periods[0].id; if(!S.periods.find(p=>p.id===S.settingsPeriod))S.settingsPeriod=S.periods[0].id; }
+/* ----------------------------- sérialisation granulaire ----------------------------- */
+/* Lignes : 'config' (service, soignants, périodes, listes de soins, structure des chambres),
+   'pat:<id>' (données de soins d'un patient), 'alerts', 'locks'. */
+function configData(){ return { service:S.service, caregivers:S.caregivers, periods:S.periods, careLists:S.careLists,
+  rooms:S.rooms.map(r=>({ id:r.id, name:r.name, patients:r.patients.map(p=>({id:p.id,nick:p.nick})) })) }; }
+function patData(p){ return { attention:!!p.attention, periods:p.periods||{} }; }
+function findPatientById(id){ for(const r of S.rooms){ const p=r.patients.find(x=>x.id===id); if(p) return p; } return null; }
 
-let syncPushTimer=null;
-function save(){ DB.save('soinsDevice',{lastCode:S.serviceCode,caregiver:S.caregiver});
-  if(!S.serviceCode) return; clearTimeout(syncPushTimer); syncPushTimer=setTimeout(()=>{ Sync.push(sharedSnapshot()); },350); }
+const _pt={};
+function pushRowDeb(key, get){ if(!S.serviceCode) return; clearTimeout(_pt[key]); _pt[key]=setTimeout(()=>{ Sync.pushRow(key, get()); }, 300); }
+function rememberDevice(){ DB.save('soinsDevice',{lastCode:S.serviceCode,caregiver:S.caregiver}); }
+function savePatient(p){ rememberDevice(); if(p) pushRowDeb('pat:'+p.id, ()=>patData(p)); }
+function saveConfig(){ rememberDevice(); pushRowDeb('config', configData); }
+function saveAlerts(){ pushRowDeb('alerts', ()=>({list:S.alerts})); }
+function saveLocks(){ rememberDevice(); pushRowDeb('locks', ()=>({map:S.locks})); }
+function pushAllRows(){ if(!S.serviceCode) return;
+  Sync.pushRow('config', configData());
+  S.rooms.forEach(r=>r.patients.forEach(p=>Sync.pushRow('pat:'+p.id, patData(p))));
+  Sync.pushRow('alerts', {list:S.alerts});
+  Sync.pushRow('locks', {map:S.locks}); }
+
+/* ----------------------------- lecture / reconstruction ----------------------------- */
+function fixPeriods(){ S.periods.forEach(p=>{ if(!S.careLists[p.id]) S.careLists[p.id]=[]; });
+  if(!S.periods.find(p=>p.id===S.period))S.period=S.periods[0].id;
+  if(!S.periods.find(p=>p.id===S.settingsPeriod))S.settingsPeriod=S.periods[0].id; }
+function assembleFromRows(map){ const cfg=map['config'];
+  if(cfg){ if(cfg.service!=null)S.service=cfg.service; if(cfg.caregivers)S.caregivers=cfg.caregivers; if(cfg.periods&&cfg.periods.length)S.periods=cfg.periods; if(cfg.careLists)S.careLists=cfg.careLists;
+    S.rooms=(cfg.rooms||[]).map(r=>({ id:r.id, name:r.name, patients:(r.patients||[]).map(sp=>{ const pr=map['pat:'+sp.id]; return { id:sp.id, nick:sp.nick, attention:pr?!!pr.attention:false, periods:pr?(pr.periods||{}):{} }; }) })); }
+  S.alerts=(map['alerts']&&map['alerts'].list)||[];
+  S.locks=(map['locks']&&map['locks'].map)||{};
+  fixPeriods(); }
+function applyConfigRow(cfg){ if(!cfg)return; if(cfg.service!=null)S.service=cfg.service; if(cfg.caregivers)S.caregivers=cfg.caregivers; if(cfg.periods&&cfg.periods.length)S.periods=cfg.periods; if(cfg.careLists)S.careLists=cfg.careLists;
+  if(cfg.rooms){ const old={}; S.rooms.forEach(r=>r.patients.forEach(p=>old[p.id]=p)); /* on garde les données de soins déjà en mémoire */
+    S.rooms=cfg.rooms.map(r=>({ id:r.id, name:r.name, patients:(r.patients||[]).map(sp=>{ const ex=old[sp.id]; if(ex){ ex.nick=sp.nick; return ex; } return { id:sp.id, nick:sp.nick, attention:false, periods:{} }; }) })); }
+  fixPeriods(); }
+function applyPatientRow(id,data){ const p=findPatientById(id); if(p){ p.attention=!!(data&&data.attention); p.periods=(data&&data.periods)||{}; } }
 
 let pendingRemote=false;
-function applyRemote(o){ applyShared(o); const ae=document.activeElement;
-  if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')){ pendingRemote=true; } else { render(); syncToast(); } }
+function applyRow(key,data){
+  if(key==='config') applyConfigRow(data);
+  else if(key.indexOf('pat:')===0) applyPatientRow(key.slice(4), data);
+  else if(key==='alerts') S.alerts=(data&&data.list)||[];
+  else if(key==='locks'){ S.locks=(data&&data.map)||{}; if(S._heldPid && !lockedByOther(S._heldPid)){ S.locks[S._heldPid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; } }
+  const ae=document.activeElement;
+  if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')) pendingRemote=true; else { render(); syncToast(); }
+}
 document.addEventListener('focusout',()=>{ if(pendingRemote){ pendingRemote=false; setTimeout(render,60); } });
 function syncToast(){ let t=document.getElementById('syncToast'); if(!t){ t=document.createElement('div'); t.id='syncToast';
     t.style.cssText='position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#14302A;color:#fff;font:600 12.5px Inter,sans-serif;padding:8px 14px;border-radius:999px;z-index:99;opacity:0;transition:opacity .2s'; document.body.appendChild(t); }
@@ -240,13 +271,15 @@ function syncToast(){ let t=document.getElementById('syncToast'); if(!t){ t=docu
 async function connectService(code){
   try{ await Sync.connect(code); }
   catch(e){ svcError('Code incorrect, ou connexion impossible. Vérifie le code et ta connexion internet.'); return; }
-  S.serviceCode=code; DB.save('soinsDevice',{lastCode:code,caregiver:S.caregiver});
-  let shared=await Sync.load();
-  if(!shared){ const legacy=DB.load('soinsCouloir3',null);
-    shared = legacy ? {service:legacy.service||DEFAULT_SERVICE,caregivers:legacy.caregivers||DEFAULT_CAREGIVERS.slice(),periods:(legacy.periods&&legacy.periods.length)?legacy.periods:JSON.parse(JSON.stringify(DEFAULT_PERIODS)),careLists:legacy.careLists||JSON.parse(JSON.stringify(SEED_CARES)),rooms:legacy.rooms||JSON.parse(JSON.stringify(SEED_ROOMS)),alerts:legacy.alerts||[]} : sharedSnapshot(); }
-  applyShared(shared); S.periods.forEach(p=>{ if(!S.careLists[p.id]) S.careLists[p.id]=[]; });
-  await Sync.push(sharedSnapshot());
-  Sync.onChange(applyRemote);
+  S.serviceCode=code; rememberDevice();
+  const map=await Sync.loadAll();
+  if(map && map['config']){ assembleFromRows(map); }
+  else { /* nouveau service ou migration depuis l'ancien format (ligne 'main') */
+    const old = (map && map['main']) ? map['main'] : DB.load('soinsCouloir3',null);
+    if(old){ if(old.service)S.service=old.service; if(old.caregivers)S.caregivers=old.caregivers; if(old.periods&&old.periods.length)S.periods=old.periods; if(old.careLists)S.careLists=old.careLists; if(old.rooms)S.rooms=old.rooms; if(old.alerts)S.alerts=old.alerts; }
+    fixPeriods(); pushAllRows();
+  }
+  Sync.onChange(applyRow);
   go('start');
 }
 function svcError(m){ const e=document.getElementById('svcErr'); if(e) e.textContent=m; const b=document.getElementById('svcGo'); if(b) b.innerHTML='Rejoindre'; }
@@ -278,7 +311,7 @@ function dictate(getText,setText,setBtn){
   rec=new SR(); rec.lang='fr-FR'; rec.continuous=false; rec.interimResults=false; rec.maxAlternatives=1;
   rec.onstart=()=>{ S.listening=true; if(setBtn)setBtn(true); };
   rec.onerror=()=>{ S.listening=false; if(setBtn)setBtn('na'); setTimeout(()=>{ if(setBtn)setBtn(false); },1800); };
-  rec.onend=()=>{ S.listening=false; if(setBtn)setBtn(false); save(); };
+  rec.onend=()=>{ S.listening=false; if(setBtn)setBtn(false); savePatient(findPatient()); };
   rec.onresult=(e)=>{ let txt=''; for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript; txt=txt.trim();
     if(txt) setText(((base?base+' ':'')+txt).replace(/\s+/g,' ').trim()); };
   try{ rec.start(); }catch(e){ S.listening=false; if(setBtn)setBtn(false); }
@@ -463,7 +496,7 @@ function doReset(){
   S.rooms.forEach(r=>r.patients.forEach(p=>{ p.attention=false;
     Object.keys(p.periods||{}).forEach(per=>{ const pp=p.periods[per]; pp.status={}; pp.careComment={}; pp.comment=''; pp.reverted=false; /* on garde pp.disabled (config par chambre) */ });
   }));
-  S.alerts=[]; save(); go('board');
+  S.alerts=[]; pushAllRows(); go('board');
 }
 function newDay(){
   if(!window.confirm('Nouvelle journée : un PDF et une sauvegarde vont être générés, puis les choix et commentaires du jour seront effacés (les soins requis/non requis par chambre sont conservés). Continuer ?')) return;
@@ -482,7 +515,7 @@ function importBackup(file){ const r=new FileReader();
   r.onload=()=>{ try{ const d=JSON.parse(r.result);
     if(d&&d.rooms&&d.careLists){ if(d.service)S.service=d.service; if(d.caregivers)S.caregivers=d.caregivers; if(d.periods&&d.periods.length)S.periods=d.periods; S.careLists=d.careLists; S.rooms=d.rooms; S.alerts=d.alerts||[];
       if(!S.periods.find(p=>p.id===S.period))S.period=S.periods[0].id; if(!S.periods.find(p=>p.id===S.settingsPeriod))S.settingsPeriod=S.periods[0].id;
-      save(); window.alert('Sauvegarde restaurée.'); go('board'); }
+      pushAllRows(); window.alert('Sauvegarde restaurée.'); go('board'); }
     else window.alert('Fichier non reconnu.'); }
     catch(e){ window.alert('Fichier illisible.'); } };
   r.readAsText(file); }
@@ -542,20 +575,20 @@ function exportScreen(){
 /* ----------------------------- events ----------------------------- */
 app.addEventListener('input', e=>{ const t=e.target; if(!t) return;
   if(t.id==='cgName'){ S.caregiver=t.value; updateStart(); }
-  else if(t.id==='comTa'){ if(lockedByOther(S.curPatient)){ autoGrow(t); return; } ensureEditable(); const p=findPatient(); if(p){ ensurePP(p,S.period).comment=t.value; save(); } autoGrow(t); }
-  else if(t.id&&t.id.indexOf('cc_')===0){ if(lockedByOther(S.curPatient)){ autoGrow(t); return; } ensureEditable(); const p=findPatient(); if(p){ ensurePP(p,S.period).careComment[t.id.slice(3)]=t.value; save(); } autoGrow(t); }
-  else if(t.id&&t.id.indexOf('carelabel_')===0){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===t.id.slice(10)); if(c){ c.label=t.value; save(); } }
-  else if(t.id==='serviceName'){ S.service=t.value; save(); }
-  else if(t.id&&t.id.indexOf('cgEdit_')===0){ const i=+t.id.slice(7); if(S.caregivers[i]!=null){ S.caregivers[i]=t.value; save(); } }
-  else if(t.id&&t.id.indexOf('perEdit_')===0){ const per=S.periods.find(p=>p.id===t.id.slice(8)); if(per){ per.label=t.value; save(); } }
+  else if(t.id==='comTa'){ if(lockedByOther(S.curPatient)){ autoGrow(t); return; } ensureEditable(); const p=findPatient(); if(p){ ensurePP(p,S.period).comment=t.value; savePatient(p); } autoGrow(t); }
+  else if(t.id&&t.id.indexOf('cc_')===0){ if(lockedByOther(S.curPatient)){ autoGrow(t); return; } ensureEditable(); const p=findPatient(); if(p){ ensurePP(p,S.period).careComment[t.id.slice(3)]=t.value; savePatient(p); } autoGrow(t); }
+  else if(t.id&&t.id.indexOf('carelabel_')===0){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===t.id.slice(10)); if(c){ c.label=t.value; saveConfig(); } }
+  else if(t.id==='serviceName'){ S.service=t.value; saveConfig(); }
+  else if(t.id&&t.id.indexOf('cgEdit_')===0){ const i=+t.id.slice(7); if(S.caregivers[i]!=null){ S.caregivers[i]=t.value; saveConfig(); } }
+  else if(t.id&&t.id.indexOf('perEdit_')===0){ const per=S.periods.find(p=>p.id===t.id.slice(8)); if(per){ per.label=t.value; saveConfig(); } }
 });
 app.addEventListener('change', e=>{ if(e.target&&e.target.id==='restoreFile'){ const f=e.target.files&&e.target.files[0]; if(f) importBackup(f); } });
 app.addEventListener('click', e=>{ const el=e.target.closest('[data-action]'); if(!el) return; const a=el.getAttribute('data-action');
   if(a==='pickCg'){ S.caregiver=el.getAttribute('data-n'); render(); }
   else if(a==='enterService'){ const v=(document.getElementById('svcCode').value||'').trim(); if(v){ svcError(''); el.innerHTML='Connexion…'; connectService(v); } }
   else if(a==='changeService'){ S.screen='service'; render(); }
-  else if(a==='enter'){ if(S.caregiver.trim()){ save(); go('board'); } }
-  else if(a==='period'){ S.period=el.getAttribute('data-p'); save(); render(); }
+  else if(a==='enter'){ if(S.caregiver.trim()){ rememberDevice(); go('board'); } }
+  else if(a==='period'){ S.period=el.getAttribute('data-p'); render(); }
   else if(a==='toSettings'){ S.settingsTab='general'; go('settings'); }
   else if(a==='toggleAlerts'){ S.showAlerts=!S.showAlerts; render(); }
   else if(a==='jump'){ S.curRoom=el.getAttribute('data-r'); S.curPatient=el.getAttribute('data-p'); S.showAlerts=false; if(!lockedByOther(S.curPatient)) acquireLock(S.curPatient); go('patient'); }
@@ -563,35 +596,35 @@ app.addEventListener('click', e=>{ const el=e.target.closest('[data-action]'); i
   else if(a==='openPatient'){ S.curPatient=el.getAttribute('data-p'); if(!lockedByOther(S.curPatient)) acquireLock(S.curPatient); go('patient'); }
   else if(a==='takeLock'){ takeLock(S.curPatient); render(); }
   else if(a==='back'){ if(S.screen==='room') go('board'); else if(S.screen==='patient') go('room'); else go('board'); }
-  else if(a==='setStatus'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); const c=el.getAttribute('data-c'),st=el.getAttribute('data-s'); if(pp.status[c]===st) delete pp.status[c]; else pp.status[c]=st; pp.reverted=false; save(); render(); }
-  else if(a==='toutFait'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); (S.careLists[S.period]||[]).forEach(c=>{ if(pp.disabled[c.id])return; if(c.choices&&c.choices.length) pp.status[c.id]=c.choices[0]; }); pp.reverted=false; save(); render(); }
-  else if(a==='disableCare'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); const c=el.getAttribute('data-c'); pp.disabled[c]=!pp.disabled[c]; if(pp.disabled[c]){ delete pp.status[c]; delete pp.careComment[c]; } save(); render(); }
+  else if(a==='setStatus'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); const c=el.getAttribute('data-c'),st=el.getAttribute('data-s'); if(pp.status[c]===st) delete pp.status[c]; else pp.status[c]=st; pp.reverted=false; savePatient(p); render(); }
+  else if(a==='toutFait'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); (S.careLists[S.period]||[]).forEach(c=>{ if(pp.disabled[c.id])return; if(c.choices&&c.choices.length) pp.status[c.id]=c.choices[0]; }); pp.reverted=false; savePatient(p); render(); }
+  else if(a==='disableCare'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); const c=el.getAttribute('data-c'); pp.disabled[c]=!pp.disabled[c]; if(pp.disabled[c]){ delete pp.status[c]; delete pp.careComment[c]; } savePatient(p); render(); }
   else if(a==='careMic'){ if(!ensureEditable())return; careMic(el.getAttribute('data-c')); }
   else if(a==='micComment'){ if(!ensureEditable())return; generalMic(); }
-  else if(a==='attention'){ if(!ensureEditable())return; const p=findPatient(); p.attention=!p.attention; save(); render(); }
-  else if(a==='notify'){ if(!ensureEditable())return; const p=findPatient(),r=findRoom(S.curRoom); S.alerts.unshift({room:r.name,nick:p.nick,ts:Date.now()}); save(); flash(document.getElementById('notifyBtn'), ic('check',18,STATUS.violet.c)+' Alerte envoyée à l\'équipe'); }
+  else if(a==='attention'){ if(!ensureEditable())return; const p=findPatient(); p.attention=!p.attention; savePatient(p); render(); }
+  else if(a==='notify'){ if(!ensureEditable())return; const p=findPatient(),r=findRoom(S.curRoom); S.alerts.unshift({room:r.name,nick:p.nick,ts:Date.now()}); saveAlerts(); flash(document.getElementById('notifyBtn'), ic('check',18,STATUS.violet.c)+' Alerte envoyée à l\'équipe'); }
   else if(a==='revert'){ /* remplacé par export PDF */ }
   else if(a==='exportDay'){ go('export'); }
   else if(a==='printDay'){ window.print(); }
   else if(a==='newDay'){ newDay(); }
   else if(a==='backupExport'){ backupDownload(); }
-  else if(a==='addCg'){ const v=(document.getElementById('newCg').value||'').trim(); if(!v)return; S.caregivers.push(v); save(); render(); }
-  else if(a==='delCg'){ S.caregivers.splice(+el.getAttribute('data-i'),1); save(); render(); }
-  else if(a==='addPeriod'){ const v=(document.getElementById('newPeriod').value||'').trim(); if(!v)return; const id='per'+Date.now(); S.periods.push({id,label:v,icon:'dot'}); S.careLists[id]=[]; save(); render(); }
-  else if(a==='delPeriod'){ if(S.periods.length<=1)return; const id=el.getAttribute('data-p'); if(!window.confirm('Supprimer la période « '+periodLabel(id)+' » et sa liste de soins ?'))return; S.periods=S.periods.filter(p=>p.id!==id); delete S.careLists[id]; if(S.period===id)S.period=S.periods[0].id; if(S.settingsPeriod===id)S.settingsPeriod=S.periods[0].id; save(); render(); }
+  else if(a==='addCg'){ const v=(document.getElementById('newCg').value||'').trim(); if(!v)return; S.caregivers.push(v); saveConfig(); render(); }
+  else if(a==='delCg'){ S.caregivers.splice(+el.getAttribute('data-i'),1); saveConfig(); render(); }
+  else if(a==='addPeriod'){ const v=(document.getElementById('newPeriod').value||'').trim(); if(!v)return; const id='per'+Date.now(); S.periods.push({id,label:v,icon:'dot'}); S.careLists[id]=[]; saveConfig(); render(); }
+  else if(a==='delPeriod'){ if(S.periods.length<=1)return; const id=el.getAttribute('data-p'); if(!window.confirm('Supprimer la période « '+periodLabel(id)+' » et sa liste de soins ?'))return; S.periods=S.periods.filter(p=>p.id!==id); delete S.careLists[id]; if(S.period===id)S.period=S.periods[0].id; if(S.settingsPeriod===id)S.settingsPeriod=S.periods[0].id; saveConfig(); render(); }
   else if(a==='addPatientPrompt'){ S.settingsTab='chambres'; go('settings'); }
   else if(a==='setTab'){ S.settingsTab=el.getAttribute('data-t'); render(); }
   else if(a==='setSP'){ S.settingsPeriod=el.getAttribute('data-p'); render(); }
-  else if(a==='delCare'){ const c=el.getAttribute('data-c'); S.careLists[S.settingsPeriod]=S.careLists[S.settingsPeriod].filter(x=>x.id!==c); save(); render(); }
-  else if(a==='addCare'){ const l=(document.getElementById('newCareLabel').value||'').trim(); if(!l)return; S.careLists[S.settingsPeriod].push({id:'c'+Date.now(),label:l,choices:D3.slice(),comment:false}); save(); render(); }
-  else if(a==='toggleChoix'){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===el.getAttribute('data-c')); if(!c)return; if(c.choices&&c.choices.length){ c.choices=null; if(!c.comment) c.comment=true; } else c.choices=D3.slice(); save(); render(); }
-  else if(a==='toggleComment'){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===el.getAttribute('data-c')); if(!c)return; c.comment=!c.comment; if(!c.comment&&!(c.choices&&c.choices.length)) c.choices=['Fait','Refusé']; save(); render(); }
-  else if(a==='addChoice'){ const cid=el.getAttribute('data-c'); const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===cid); const inp=document.getElementById('addchoice_'+cid); const v=(inp.value||'').trim(); if(!c||!v)return; c.choices=c.choices||[]; c.choices.push(v); save(); render(); }
-  else if(a==='delChoice'){ const cid=el.getAttribute('data-c'); const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===cid); if(!c||!c.choices)return; c.choices.splice(+el.getAttribute('data-i'),1); save(); render(); }
-  else if(a==='addRoom'){ const n=(document.getElementById('newRoom').value||'').trim(); if(!n)return; S.rooms.push({id:'r'+Date.now(),name:n,patients:[]}); save(); render(); }
-  else if(a==='delRoom'){ const r=el.getAttribute('data-r'); S.rooms=S.rooms.filter(x=>x.id!==r); save(); render(); }
-  else if(a==='addPatient'){ const rid=el.getAttribute('data-r'); const inp=document.getElementById('np_'+rid); const nick=(inp.value||'').trim(); if(!nick)return; findRoom(rid).patients.push({id:'p'+Date.now(),nick,attention:false,periods:{}}); save(); render(); }
-  else if(a==='delPatient'){ const rid=el.getAttribute('data-r'),pid=el.getAttribute('data-p'); const r=findRoom(rid); r.patients=r.patients.filter(x=>x.id!==pid); save(); render(); }
+  else if(a==='delCare'){ const c=el.getAttribute('data-c'); S.careLists[S.settingsPeriod]=S.careLists[S.settingsPeriod].filter(x=>x.id!==c); saveConfig(); render(); }
+  else if(a==='addCare'){ const l=(document.getElementById('newCareLabel').value||'').trim(); if(!l)return; S.careLists[S.settingsPeriod].push({id:'c'+Date.now(),label:l,choices:D3.slice(),comment:false}); saveConfig(); render(); }
+  else if(a==='toggleChoix'){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===el.getAttribute('data-c')); if(!c)return; if(c.choices&&c.choices.length){ c.choices=null; if(!c.comment) c.comment=true; } else c.choices=D3.slice(); saveConfig(); render(); }
+  else if(a==='toggleComment'){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===el.getAttribute('data-c')); if(!c)return; c.comment=!c.comment; if(!c.comment&&!(c.choices&&c.choices.length)) c.choices=['Fait','Refusé']; saveConfig(); render(); }
+  else if(a==='addChoice'){ const cid=el.getAttribute('data-c'); const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===cid); const inp=document.getElementById('addchoice_'+cid); const v=(inp.value||'').trim(); if(!c||!v)return; c.choices=c.choices||[]; c.choices.push(v); saveConfig(); render(); }
+  else if(a==='delChoice'){ const cid=el.getAttribute('data-c'); const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===cid); if(!c||!c.choices)return; c.choices.splice(+el.getAttribute('data-i'),1); saveConfig(); render(); }
+  else if(a==='addRoom'){ const n=(document.getElementById('newRoom').value||'').trim(); if(!n)return; S.rooms.push({id:'r'+Date.now(),name:n,patients:[]}); saveConfig(); render(); }
+  else if(a==='delRoom'){ const r=el.getAttribute('data-r'); S.rooms=S.rooms.filter(x=>x.id!==r); saveConfig(); render(); }
+  else if(a==='addPatient'){ const rid=el.getAttribute('data-r'); const inp=document.getElementById('np_'+rid); const nick=(inp.value||'').trim(); if(!nick)return; findRoom(rid).patients.push({id:'p'+Date.now(),nick,attention:false,periods:{}}); saveConfig(); render(); }
+  else if(a==='delPatient'){ const rid=el.getAttribute('data-r'),pid=el.getAttribute('data-p'); const r=findRoom(rid); r.patients=r.patients.filter(x=>x.id!==pid); saveConfig(); render(); }
 });
 
 render();
