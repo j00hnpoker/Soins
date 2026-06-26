@@ -1,4 +1,5 @@
 {
+  "id": "soins-couloir",
   "name": "Soins · couloir",
   "short_name": "Soins",
   "description": "Saisie des soins au lit du patient, partagée en temps réel.",
