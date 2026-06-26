@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--bg:#E9EFED;--surface:#FFFFFF;--ink:#14302A;--muted:#5F736E;--faint:#8C9E99;--line:#D7E2DD;--teal:#0F7A66;--tealDark:#0A5C4D;--tealSoft:#E1EFEB;--chip:#F1F4F3;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
@@ -159,7 +160,32 @@ const LocalSync = {
     if(this._bc) this._bc.postMessage(data); },
   onChange(cb){ this._cb=cb; }
 };
-const Sync = LocalSync;   /* le jour J : const Sync = SupabaseSync; */
+/* --- Adaptateur SUPABASE (production) : vraie synchro entre téléphones --- */
+const SUPABASE_URL='https://jfxzlclztacrhsozytnr.supabase.co';
+const SUPABASE_KEY='sb_publishable_8oZ4TUgq2_Z5cbW6CuCr7A_-WulWl0K'; /* clé publique par conception */
+const TEAM_EMAIL='equipe@soins.fr';
+const SVC_ROW='main'; /* une seule fiche de service partagée */
+const SupabaseSync = {
+  code:null, sb:null, _cb:null, _chan:null,
+  async connect(code){ this.code=code;
+    this.sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    const {error}=await this.sb.auth.signInWithPassword({email:TEAM_EMAIL,password:code});
+    if(error) throw error;
+    return true; },
+  async load(){ try{ const {data}=await this.sb.from('services').select('state').eq('code',SVC_ROW).maybeSingle();
+      if(data&&data.state){ try{localStorage.setItem('soinsCache',JSON.stringify(data.state));}catch(_){} return data.state; } }
+    catch(_){ try{ return JSON.parse(localStorage.getItem('soinsCache')||'null'); }catch(e){} }
+    return null; },
+  async push(data){ data._origin=myDevice; try{localStorage.setItem('soinsCache',JSON.stringify(data));}catch(_){}
+    try{ await this.sb.from('services').upsert({code:SVC_ROW,state:data,updated_at:new Date().toISOString()},{onConflict:'code'}); }catch(_){} },
+  onChange(cb){ this._cb=cb;
+    this._chan=this.sb.channel('svc-main')
+      .on('postgres_changes',{event:'*',schema:'public',table:'services',filter:'code=eq.'+SVC_ROW},
+          payload=>{ const st=payload.new&&payload.new.state; if(!st||st._origin===myDevice) return; if(this._cb) this._cb(st); })
+      .subscribe(); }
+};
+/* Si la lib Supabase est chargée → vraie synchro ; sinon repli local (démo entre onglets). */
+const Sync = (typeof window!=='undefined' && window.supabase) ? SupabaseSync : LocalSync;
 
 /* ----------------------------- state ----------------------------- */
 const app=document.getElementById('app');
@@ -209,8 +235,9 @@ function syncToast(){ let t=document.getElementById('syncToast'); if(!t){ t=docu
   t.textContent='Mis à jour par un autre appareil'; t.style.opacity='1'; clearTimeout(t._h); t._h=setTimeout(()=>{t.style.opacity='0';},1600); }
 
 async function connectService(code){
+  try{ await Sync.connect(code); }
+  catch(e){ svcError('Code incorrect, ou connexion impossible. Vérifie le code et ta connexion internet.'); return; }
   S.serviceCode=code; DB.save('soinsDevice',{lastCode:code,caregiver:S.caregiver});
-  await Sync.connect(code);
   let shared=await Sync.load();
   if(!shared){ const legacy=DB.load('soinsCouloir3',null);
     shared = legacy ? {service:legacy.service||DEFAULT_SERVICE,caregivers:legacy.caregivers||DEFAULT_CAREGIVERS.slice(),periods:(legacy.periods&&legacy.periods.length)?legacy.periods:JSON.parse(JSON.stringify(DEFAULT_PERIODS)),careLists:legacy.careLists||JSON.parse(JSON.stringify(SEED_CARES)),rooms:legacy.rooms||JSON.parse(JSON.stringify(SEED_ROOMS)),alerts:legacy.alerts||[]} : sharedSnapshot(); }
@@ -219,6 +246,7 @@ async function connectService(code){
   Sync.onChange(applyRemote);
   go('start');
 }
+function svcError(m){ const e=document.getElementById('svcErr'); if(e) e.textContent=m; const b=document.getElementById('svcGo'); if(b) b.innerHTML='Rejoindre'; }
 function go(s){ if(S.screen==='patient' && s!=='patient' && S.curPatient){ releaseLock(S.curPatient); } if(rec&&S.listening){ try{rec.stop();}catch(e){} } S.screen=s; render(); window.scrollTo(0,0); }
 function periodLabel(id){ const p=S.periods.find(x=>x.id===id); return p?p.label:id; }
 function dayKey(ts){ const d=new Date(ts); const z=n=>n<10?'0'+n:''+n; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
@@ -277,8 +305,9 @@ function serviceScreen(){
     +'<div class="faint" style="font-size:13px;margin-top:2px">Rejoindre un service partagé</div>'
     +'<div style="flex:1;display:flex;flex-direction:column;justify-content:center">'
       +'<div class="card" style="padding:18px"><div class="row" style="gap:12px;margin-bottom:16px"><div style="height:44px;width:44px;border-radius:12px;background:var(--tealSoft);color:var(--tealDark);display:flex;align-items:center;justify-content:center">'+ic('door',22,'var(--tealDark)')+'</div><div style="font-size:16px;font-weight:700">Code du service</div></div>'
-      +'<input id="svcCode" class="ti" placeholder="ex. GERIA-B-2026" autocapitalize="characters" value="'+attr(S._lastCode||'')+'" />'
-      +'<button id="svcGo" class="btn-primary" data-action="enterService" style="margin-top:14px">Rejoindre '+ic('chevR',20,'#fff')+'</button></div>'
+      +'<input id="svcCode" class="ti" placeholder="Code d\'accès du service" autocapitalize="none" autocorrect="off" spellcheck="false" value="'+attr(S._lastCode||'')+'" />'
+      +'<button id="svcGo" class="btn-primary" data-action="enterService" style="margin-top:14px">Rejoindre '+ic('chevR',20,'#fff')+'</button>'
+      +'<div id="svcErr" style="color:#CC4F38;font-size:12.5px;margin-top:10px"></div></div>'
       +'<p class="faint" style="font-size:12.5px;margin-top:14px;line-height:1.55">Tout le monde qui entre le <b>même code</b> partage le même couloir, en temps réel. Démo : synchro entre onglets du même navigateur ; en production, entre téléphones via le backend (Supabase).</p>'
     +'</div></div>';
 }
@@ -286,7 +315,7 @@ function startScreen(){
   let picks=S.caregivers.map(n=>'<button data-action="pickCg" data-n="'+attr(n)+'" class="ptab '+(S.caregiver===n?'on':'')+'">'+htmlEsc(n)+'</button>').join('');
   return '<div class="screen pad" style="padding-top:30px;padding-bottom:24px">'
     +'<div style="color:var(--teal);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase">Service de soins</div>'
-    +'<div class="faint" style="font-size:13px;margin-top:2px">'+htmlEsc(S.service)+' · service <b>'+htmlEsc(S.serviceCode||'')+'</b> · <button data-action="changeService" style="color:var(--teal);font-weight:700">changer</button></div>'
+    +'<div class="faint" style="font-size:13px;margin-top:2px">'+htmlEsc(S.service)+' · <button data-action="changeService" style="color:var(--teal);font-weight:700">changer de service</button></div>'
     +'<div style="flex:1;display:flex;flex-direction:column;justify-content:center">'
       +'<div class="card" style="padding:18px"><div class="row" style="gap:12px;margin-bottom:16px"><div style="height:44px;width:44px;border-radius:12px;background:var(--tealSoft);color:var(--tealDark);display:flex;align-items:center;justify-content:center">'+ic('user',22,'var(--tealDark)')+'</div><div style="font-size:16px;font-weight:700">Qui prend le service ?</div></div>'
         +'<div class="lbl">Soignant</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+picks+'</div>'
@@ -520,7 +549,7 @@ app.addEventListener('input', e=>{ const t=e.target; if(!t) return;
 app.addEventListener('change', e=>{ if(e.target&&e.target.id==='restoreFile'){ const f=e.target.files&&e.target.files[0]; if(f) importBackup(f); } });
 app.addEventListener('click', e=>{ const el=e.target.closest('[data-action]'); if(!el) return; const a=el.getAttribute('data-action');
   if(a==='pickCg'){ S.caregiver=el.getAttribute('data-n'); render(); }
-  else if(a==='enterService'){ const v=(document.getElementById('svcCode').value||'').trim().toUpperCase(); if(v) connectService(v); }
+  else if(a==='enterService'){ const v=(document.getElementById('svcCode').value||'').trim(); if(v){ svcError(''); el.innerHTML='Connexion…'; connectService(v); } }
   else if(a==='changeService'){ S.screen='service'; render(); }
   else if(a==='enter'){ if(S.caregiver.trim()){ save(); go('board'); } }
   else if(a==='period'){ S.period=el.getAttribute('data-p'); save(); render(); }
