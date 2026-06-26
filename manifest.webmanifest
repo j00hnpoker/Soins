@@ -1,0 +1,14 @@
+{
+  "name": "Soins · couloir",
+  "short_name": "Soins",
+  "description": "Saisie des soins au lit du patient, partagée en temps réel.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FEFDFB",
+  "theme_color": "#0F7A66",
+  "icons": [
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" }
+  ]
+}
