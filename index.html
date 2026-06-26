@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Soins · couloir</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>🩺</text></svg>" />
+<meta name="theme-color" content="#0F7A66" />
+<meta name="apple-mobile-web-app-title" content="Soins couloir" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#E9EFED;--surface:#FFFFFF;--ink:#14302A;--muted:#5F736E;--faint:#8C9E99;--line:#D7E2DD;--teal:#0F7A66;--tealDark:#0A5C4D;--tealSoft:#E1EFEB;--chip:#F1F4F3;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  body{font-family:Inter,system-ui,sans-serif;background:#DFE6E3;color:var(--ink);display:flex;justify-content:center;min-height:100vh}
+  #app{width:100%;max-width:440px;background:var(--bg);min-height:100vh;position:relative;overflow:hidden}
+  .screen{display:flex;flex-direction:column;min-height:100vh}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  textarea,input{font-family:inherit}
+  svg{display:block}
+  .pad{padding:0 18px}
+  .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;display:inline-block}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px}
+  .row{display:flex;align-items:center}
+  .scroll{flex:1;overflow:auto}
+  .iconbtn{height:40px;width:40px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--line)}
+  .btn-primary{height:54px;border-radius:16px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--teal);color:#fff;width:100%}
+  .btn-primary:disabled{background:var(--line);color:var(--faint)}
+  .btn-soft{height:46px;border-radius:14px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--surface);border:1px solid var(--line);color:var(--ink);width:100%}
+  .header{padding:22px 18px 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+  .footer{padding:12px 18px 22px;background:var(--bg);border-top:1px solid var(--line)}
+  .ti{height:48px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font-size:16px;width:100%;outline:none;color:var(--ink);background:#fff}
+  .ti:focus{border-color:var(--teal)}
+  .ti::placeholder{color:var(--faint)}
+  .lbl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-bottom:6px}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  .ptab{padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+  .ptab.on{background:var(--teal);color:#fff;border-color:var(--teal)}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(124,91,199,.4)}50%{box-shadow:0 0 0 10px rgba(124,91,199,0)}}
+  .glowv{animation:glow 1.6s infinite}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  textarea.grow{resize:none;overflow:hidden}
+  @media print{ .no-print{display:none!important} body{background:#fff} #app{max-width:none} .scroll{overflow:visible} .screen{min-height:auto} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ----------------------------- icons ----------------------------- */
+const ICONS={
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
+  utensils:'<path d="M8 3v18"/><path d="M6 3v5a2 2 0 0 0 4 0V3"/><path d="M16 3c-1.6 0-2.6 2-2.6 5s1 4 2.6 4v9"/>',
+  armchair:'<path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3"/><rect x="3" y="11" width="18" height="6" rx="2"/><path d="M6 17v3M18 17v3"/>',
+  bed:'<path d="M3 7v13"/><path d="M21 20v-7a2 2 0 0 0-2-2H8"/><path d="M3 14h18"/><circle cx="6.5" cy="10.5" r="1.6"/>',
+  moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  door:'<rect x="6" y="3" width="12" height="18" rx="1"/><circle cx="14.6" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  user:'<circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  check:'<path d="M5 12l5 5L20 6"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  ban:'<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>',
+  chevL:'<path d="M15 5l-7 7 7 7"/>',
+  chevR:'<path d="M9 5l7 7-7 7"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5.2 5.2l2 2M16.8 16.8l2 2M18.8 5.2l-2 2M7.2 16.8l-2 2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  trash:'<path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1l1-13"/>',
+  bell:'<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  alert:'<path d="M12 3l9 17H3z"/><path d="M12 9v5M12 17v.5"/>',
+  comment:'<path d="M4 5h16v11H9l-4 4z"/>',
+  send:'<path d="M4 12l16-7-6 16-3-7z"/>',
+  sparkles:'<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/>',
+  rotate:'<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
+  file:'<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>',
+  dot:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>'
+};
+function ic(n,s,c,w){ s=s||20;c=c||'currentColor';w=w||2;
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[n]||ICONS.dot)+'</svg>'; }
+
+/* ----------------------------- colors ----------------------------- */
+const STATUS={
+  grey:{c:'#90A09C',soft:'#E7ECEA',label:'Vide'}, green:{c:'#1C9C76',soft:'#DDF2E9',label:'Tout fait'},
+  orange:{c:'#DB8A2A',soft:'#FAEEDA',label:'Partiel'}, red:{c:'#CC4F38',soft:'#F9E3DD',label:'À faire'},
+  violet:{c:'#7C5BC7',soft:'#EBE5F8',label:'Attention'}
+};
+function norm(s){ return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function choiceColor(lbl){ const n=norm(lbl); if(/refus|absent|\bnon\b/.test(n)) return STATUS.red.c; if(/partiel|molle|liquide|peu|dure/.test(n)) return STATUS.orange.c; return STATUS.green.c; }
+
+/* ----------------------------- storage ----------------------------- */
+const DB={ load(k,fb){ try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(e){return fb;} },
+  save(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} } };
+
+/* ----------------------------- periods & cares ----------------------------- */
+const DEFAULT_PERIODS=[{id:'matin',label:'Matin',icon:'sun'},{id:'midi',label:'Midi',icon:'utensils'},{id:'apresmidi',label:'Après-midi',icon:'armchair'},{id:'repas',label:'Repas',icon:'utensils'},{id:'soir',label:'Soir',icon:'bed'},{id:'nuit',label:'Nuit',icon:'moon'}];
+const D3=['Fait','Partiel','Refusé'];
+const SEED_CARES={
+  matin:[
+    {id:'m_reveil',label:'Réveil',choices:['Fait','Refusé'],comment:false},
+    {id:'m_lever',label:'Lever / fauteuil',choices:D3.slice(),comment:false},
+    {id:'m_toilette',label:'Toilette',choices:['Fait','Refusé'],comment:false},
+    {id:'m_douche',label:'Douche',choices:['Fait','Refusé'],comment:false},
+    {id:'m_meds',label:'Médicaments',choices:['Pris','Partiel','Refusé'],comment:false},
+    {id:'m_dej',label:'Petit-déjeuner',choices:['Mangé','Partiel','Refusé'],comment:true},
+    {id:'m_selles',label:'Selles',choices:['Normales','Molles','Liquides','Dures','Absentes'],comment:true}
+  ],
+  midi:[
+    {id:'mi_meds',label:'Médicaments',choices:['Pris','Refusé'],comment:false},
+    {id:'mi_repas',label:'Déjeuner',choices:['Mangé','Partiel','Refusé'],comment:true},
+    {id:'mi_toil',label:'Toilettes',choices:['Fait','Refusé'],comment:false}
+  ],
+  apresmidi:[
+    {id:'ap_mob',label:'Mobilisation',choices:D3.slice(),comment:false},
+    {id:'ap_coll',label:'Collation / boisson',choices:['Pris','Refusé'],comment:false},
+    {id:'ap_toil',label:'Toilettes',choices:['Fait','Refusé'],comment:false}
+  ],
+  repas:[
+    {id:'re_repas',label:'Repas',choices:['Mangé','Partiel','Refusé'],comment:true},
+    {id:'re_hydra',label:'Hydratation',choices:['Bien','Peu'],comment:false},
+    {id:'re_meds',label:'Médicaments',choices:['Pris','Refusé'],comment:false}
+  ],
+  soir:[
+    {id:'so_meds',label:'Médicaments',choices:['Pris','Refusé'],comment:false},
+    {id:'so_diner',label:'Dîner',choices:['Mangé','Partiel','Refusé'],comment:true},
+    {id:'so_toil',label:'Toilette du soir',choices:['Fait','Refusé'],comment:false},
+    {id:'so_couch',label:'Coucher',choices:['Fait','Refusé'],comment:false}
+  ],
+  nuit:[
+    {id:'nu_ronde',label:'Ronde',choices:['Faite'],comment:false},
+    {id:'nu_change',label:'Change',choices:['Fait','Non nécessaire'],comment:false},
+    {id:'nu_surv',label:'Surveillance',choices:['RAS','À signaler'],comment:true}
+  ]
+};
+const SEED_ROOMS=[
+  {id:'r210',name:'210',patients:[{id:'p1',nick:'Mamie Rose',attention:false,periods:{}}]},
+  {id:'r211',name:'211',patients:[{id:'p2',nick:'Le Capitaine',attention:false,periods:{}}]},
+  {id:'r212',name:'212',patients:[]},
+  {id:'r213',name:'213',patients:[{id:'p3',nick:'Lucie',attention:false,periods:{}},{id:'p4',nick:'Tonton Jo',attention:false,periods:{}}]},
+  {id:'r214',name:'214',patients:[{id:'p5',nick:'Madame R.',attention:false,periods:{}}]},
+  {id:'r215',name:'215',patients:[{id:'p6',nick:'Papi Léon',attention:false,periods:{}}]}
+];
+const DEFAULT_CAREGIVERS=['Sophie','Karim','Inès','Marc'];
+const DEFAULT_SERVICE='Gériatrie B';
+
+/* ----------------------------- SYNC (couche de partage) ----------------------------- */
+/* Adaptateur LOCAL/démo : temps réel entre onglets via 'storage' + BroadcastChannel,
+   persistance localStorage namespacée par code de service.
+   Pour le réel : remplacer par SupabaseSync (même interface) — voir sync-demo.html
+   pour le SQL (table services + RLS + temps réel) et les 3 étapes d'activation. */
+const LocalSync = {
+  code:null,key:null,_cb:null,_bc:null,
+  async connect(code){ this.code=code; this.key='soinsSvc:'+code;
+    try{ this._bc=new BroadcastChannel(this.key); this._bc.onmessage=e=>{ if(this._cb)this._cb(e.data); }; }catch(_){}
+    window.addEventListener('storage',e=>{ if(e.key===this.key&&e.newValue){ try{ if(this._cb)this._cb(JSON.parse(e.newValue)); }catch(_){} } });
+    return true; },
+  async load(){ try{ return JSON.parse(localStorage.getItem(this.key)||'null'); }catch(_){ return null; } },
+  async push(data){ try{ localStorage.setItem(this.key, JSON.stringify(data)); }catch(_){}
+    if(this._bc) this._bc.postMessage(data); },
+  onChange(cb){ this._cb=cb; }
+};
+const Sync = LocalSync;   /* le jour J : const Sync = SupabaseSync; */
+
+/* ----------------------------- state ----------------------------- */
+const app=document.getElementById('app');
+const S = { caregiver:'', period:'matin', serviceCode:null, _lastCode:'',
+  service:DEFAULT_SERVICE, caregivers:DEFAULT_CAREGIVERS.slice(),
+  periods:JSON.parse(JSON.stringify(DEFAULT_PERIODS)), careLists:JSON.parse(JSON.stringify(SEED_CARES)),
+  rooms:JSON.parse(JSON.stringify(SEED_ROOMS)), alerts:[], locks:{} };
+S.screen='service'; S.curRoom=null; S.curPatient=null; S._heldPid=null; S.settingsTab='general'; S.settingsPeriod='matin'; S.showAlerts=false; S.listening=false;
+const dev=DB.load('soinsDevice',null); if(dev){ if(dev.caregiver)S.caregiver=dev.caregiver; S._lastCode=dev.lastCode||''; }
+S.periods.forEach(p=>{ if(!S.careLists[p.id]) S.careLists[p.id]=[]; });
+let rec=null;
+
+/* ----------------------------- verrou par patient ----------------------------- */
+const LOCK_TTL=30000; /* un verrou expire après 30 s sans rafraîchissement */
+const myDevice=(function(){ let d=DB.load('soinsDeviceId',null); if(!d){ d='dev'+Math.random().toString(36).slice(2,9); DB.save('soinsDeviceId',d);} return d; })();
+function lockOf(pid){ return (S.locks||{})[pid]; }
+function lockActive(l){ return !!l && (Date.now()-l.ts)<LOCK_TTL; }
+function lockedByOther(pid){ const l=lockOf(pid); return lockActive(l) && l.device!==myDevice; }
+function acquireLock(pid){ if(!pid) return false; S.locks=S.locks||{}; if(lockedByOther(pid)) return false; S.locks[pid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; S._heldPid=pid; save(); return true; }
+function takeLock(pid){ S.locks=S.locks||{}; S.locks[pid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; S._heldPid=pid; save(); }
+function releaseLock(pid){ if(S.locks&&S.locks[pid]&&S.locks[pid].device===myDevice) delete S.locks[pid]; if(S._heldPid===pid)S._heldPid=null; save(); }
+function ensureEditable(){ const pid=S.curPatient; if(lockedByOther(pid)) return false; const l=lockOf(pid); if(!l||l.device!==myDevice) acquireLock(pid); return true; }
+/* battement de cœur : maintient mon verrou, rafraîchit l'affichage, libère les verrous expirés */
+setInterval(()=>{ if(!S.serviceCode) return;
+  if(S.screen==='patient' && S.curPatient){ const l=lockOf(S.curPatient); if(l&&l.device===myDevice){ l.ts=Date.now(); save(); } }
+  const ae=document.activeElement; const typing=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA');
+  if((S.screen==='room'||S.screen==='patient') && !typing) render();
+}, 8000);
+
+/* DONNÉES PARTAGÉES (synchronisées) vs LOCALES (cet appareil : soignant, période vue, écran) */
+function sharedSnapshot(){ return {service:S.service,caregivers:S.caregivers,periods:S.periods,careLists:S.careLists,rooms:S.rooms,alerts:S.alerts,locks:S.locks||{}}; }
+function applyShared(o){ if(!o)return; if(o.service!=null)S.service=o.service; if(o.caregivers)S.caregivers=o.caregivers; if(o.periods&&o.periods.length)S.periods=o.periods; if(o.careLists)S.careLists=o.careLists; if(o.rooms)S.rooms=o.rooms; if(o.alerts)S.alerts=o.alerts;
+  if(o.locks)S.locks=o.locks; S.locks=S.locks||{};
+  if(S._heldPid && !lockedByOther(S._heldPid)){ S.locks[S._heldPid]={by:S.caregiver||'?',device:myDevice,ts:Date.now()}; }
+  if(!S.periods.find(p=>p.id===S.period))S.period=S.periods[0].id; if(!S.periods.find(p=>p.id===S.settingsPeriod))S.settingsPeriod=S.periods[0].id; }
+
+let syncPushTimer=null;
+function save(){ DB.save('soinsDevice',{lastCode:S.serviceCode,caregiver:S.caregiver});
+  if(!S.serviceCode) return; clearTimeout(syncPushTimer); syncPushTimer=setTimeout(()=>{ Sync.push(sharedSnapshot()); },350); }
+
+let pendingRemote=false;
+function applyRemote(o){ applyShared(o); const ae=document.activeElement;
+  if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')){ pendingRemote=true; } else { render(); syncToast(); } }
+document.addEventListener('focusout',()=>{ if(pendingRemote){ pendingRemote=false; setTimeout(render,60); } });
+function syncToast(){ let t=document.getElementById('syncToast'); if(!t){ t=document.createElement('div'); t.id='syncToast';
+    t.style.cssText='position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#14302A;color:#fff;font:600 12.5px Inter,sans-serif;padding:8px 14px;border-radius:999px;z-index:99;opacity:0;transition:opacity .2s'; document.body.appendChild(t); }
+  t.textContent='Mis à jour par un autre appareil'; t.style.opacity='1'; clearTimeout(t._h); t._h=setTimeout(()=>{t.style.opacity='0';},1600); }
+
+async function connectService(code){
+  S.serviceCode=code; DB.save('soinsDevice',{lastCode:code,caregiver:S.caregiver});
+  await Sync.connect(code);
+  let shared=await Sync.load();
+  if(!shared){ const legacy=DB.load('soinsCouloir3',null);
+    shared = legacy ? {service:legacy.service||DEFAULT_SERVICE,caregivers:legacy.caregivers||DEFAULT_CAREGIVERS.slice(),periods:(legacy.periods&&legacy.periods.length)?legacy.periods:JSON.parse(JSON.stringify(DEFAULT_PERIODS)),careLists:legacy.careLists||JSON.parse(JSON.stringify(SEED_CARES)),rooms:legacy.rooms||JSON.parse(JSON.stringify(SEED_ROOMS)),alerts:legacy.alerts||[]} : sharedSnapshot(); }
+  applyShared(shared); S.periods.forEach(p=>{ if(!S.careLists[p.id]) S.careLists[p.id]=[]; });
+  await Sync.push(sharedSnapshot());
+  Sync.onChange(applyRemote);
+  go('start');
+}
+function go(s){ if(S.screen==='patient' && s!=='patient' && S.curPatient){ releaseLock(S.curPatient); } if(rec&&S.listening){ try{rec.stop();}catch(e){} } S.screen=s; render(); window.scrollTo(0,0); }
+function periodLabel(id){ const p=S.periods.find(x=>x.id===id); return p?p.label:id; }
+function dayKey(ts){ const d=new Date(ts); const z=n=>n<10?'0'+n:''+n; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+
+/* ----------------------------- helpers ----------------------------- */
+function htmlEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function attr(s){ return htmlEsc(s).replace(/"/g,'&quot;'); }
+function ensurePP(p,period){ if(!p.periods[period]) p.periods[period]={status:{},careComment:{},disabled:{},comment:'',reverted:false};
+  const pp=p.periods[period]; pp.status=pp.status||{}; pp.careComment=pp.careComment||{}; pp.disabled=pp.disabled||{}; if(pp.comment==null)pp.comment=''; return pp; }
+function careHandled(c,pp){ if(pp.disabled[c.id]) return null; const hasCh=c.choices&&c.choices.length;
+  if(hasCh) return !!pp.status[c.id]; if(c.comment) return !!(pp.careComment[c.id]&&pp.careComment[c.id].trim()); return false; }
+function completion(p,period){ const pp=ensurePP(p,period); let en=0,hd=0; (S.careLists[period]||[]).forEach(c=>{ const h=careHandled(c,pp); if(h===null) return; en++; if(h) hd++; }); return {en,hd}; }
+function patientColor(p,period){ if(p.attention) return 'violet'; const pp=ensurePP(p,period); if(pp.reverted) return 'green'; const {en,hd}=completion(p,period); if(en===0) return 'green'; if(hd===0) return 'red'; if(hd>=en) return 'green'; return 'orange'; }
+function roomColor(room,period){ if(!room.patients.length) return 'grey'; if(room.patients.some(p=>p.attention)) return 'violet'; let en=0,hd=0; room.patients.forEach(p=>{ const c=completion(p,period); const pp=ensurePP(p,period); en+=c.en; hd+=pp.reverted?c.en:c.hd; }); if(en===0) return 'green'; if(hd===0) return 'red'; if(hd>=en) return 'green'; return 'orange'; }
+function roomFrac(room,period){ let en=0,hd=0; room.patients.forEach(p=>{ const c=completion(p,period); const pp=ensurePP(p,period); en+=c.en; hd+=pp.reverted?c.en:c.hd; }); return {en,hd}; }
+function findRoom(id){ return S.rooms.find(r=>r.id===id); }
+function findPatient(){ const r=findRoom(S.curRoom); if(!r)return null; return r.patients.find(p=>p.id===S.curPatient); }
+function flash(el,msg){ if(!el)return; const o=el.innerHTML; el.innerHTML=msg; setTimeout(()=>{el.innerHTML=o;},1600); }
+
+/* ----------------------------- dictation (robust) ----------------------------- */
+function dictate(getText,setText,setBtn){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(S.listening){ if(rec){try{rec.stop();}catch(e){}} return; }
+  if(!SR){ if(setBtn)setBtn('na'); setTimeout(()=>{ if(setBtn)setBtn(false); },1800); return; }
+  const base=(getText()||'').trim();
+  rec=new SR(); rec.lang='fr-FR'; rec.continuous=false; rec.interimResults=false; rec.maxAlternatives=1;
+  rec.onstart=()=>{ S.listening=true; if(setBtn)setBtn(true); };
+  rec.onerror=()=>{ S.listening=false; if(setBtn)setBtn('na'); setTimeout(()=>{ if(setBtn)setBtn(false); },1800); };
+  rec.onend=()=>{ S.listening=false; if(setBtn)setBtn(false); save(); };
+  rec.onresult=(e)=>{ let txt=''; for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript; txt=txt.trim();
+    if(txt) setText(((base?base+' ':'')+txt).replace(/\s+/g,' ').trim()); };
+  try{ rec.start(); }catch(e){ S.listening=false; if(setBtn)setBtn(false); }
+}
+function generalMic(){ const p=findPatient(); if(!p)return; const pp=ensurePP(p,S.period);
+  dictate(()=>pp.comment, t=>{ pp.comment=t; const ta=document.getElementById('comTa'); if(ta){ta.value=t;autoGrow(ta);} },
+    st=>{ const b=document.getElementById('micCom'); if(!b)return;
+      if(st===true) b.innerHTML=ic('stop',14,STATUS.red.c)+'Écoute…';
+      else if(st==='na') b.innerHTML=ic('mic',14,STATUS.red.c)+'Indispo';
+      else b.innerHTML=ic('mic',14,'var(--teal)')+'Dicter'; }); }
+function careMic(cid){ const p=findPatient(); if(!p)return; const pp=ensurePP(p,S.period);
+  dictate(()=>pp.careComment[cid]||'', t=>{ pp.careComment[cid]=t; const inp=document.getElementById('cc_'+cid); if(inp){inp.value=t;autoGrow(inp);} },
+    st=>{ const b=document.getElementById('ccm_'+cid); if(!b)return;
+      b.innerHTML = ic(st===true?'stop':(st==='na'?'ban':'mic'), 18, st===true?STATUS.red.c:(st==='na'?STATUS.red.c:'var(--tealDark)')); }); }
+
+/* ----------------------------- render ----------------------------- */
+function render(){ const m={service:serviceScreen,start:startScreen,board:boardScreen,room:roomScreen,patient:patientScreen,settings:settingsScreen,export:exportScreen};
+  app.innerHTML=(m[S.screen]||serviceScreen)(); if(S.screen==='start') updateStart(); sizeGrowers(); }
+function autoGrow(el){ if(!el)return; el.style.height='auto'; el.style.height=Math.max(el.scrollHeight,40)+'px'; }
+function sizeGrowers(){ document.querySelectorAll('textarea.grow').forEach(autoGrow); }
+function tag(t,bg,fg){ return '<span class="tag" style="background:'+bg+';color:'+fg+'">'+t+'</span>'; }
+function statusDot(col,size){ size=size||9; return '<span style="width:'+size+'px;height:'+size+'px;border-radius:999px;display:inline-block;background:'+STATUS[col].c+'"></span>'; }
+
+function serviceScreen(){
+  return '<div class="screen pad" style="padding-top:30px;padding-bottom:24px">'
+    +'<div style="color:var(--teal);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase">Synchronisation</div>'
+    +'<div class="faint" style="font-size:13px;margin-top:2px">Rejoindre un service partagé</div>'
+    +'<div style="flex:1;display:flex;flex-direction:column;justify-content:center">'
+      +'<div class="card" style="padding:18px"><div class="row" style="gap:12px;margin-bottom:16px"><div style="height:44px;width:44px;border-radius:12px;background:var(--tealSoft);color:var(--tealDark);display:flex;align-items:center;justify-content:center">'+ic('door',22,'var(--tealDark)')+'</div><div style="font-size:16px;font-weight:700">Code du service</div></div>'
+      +'<input id="svcCode" class="ti" placeholder="ex. GERIA-B-2026" autocapitalize="characters" value="'+attr(S._lastCode||'')+'" />'
+      +'<button id="svcGo" class="btn-primary" data-action="enterService" style="margin-top:14px">Rejoindre '+ic('chevR',20,'#fff')+'</button></div>'
+      +'<p class="faint" style="font-size:12.5px;margin-top:14px;line-height:1.55">Tout le monde qui entre le <b>même code</b> partage le même couloir, en temps réel. Démo : synchro entre onglets du même navigateur ; en production, entre téléphones via le backend (Supabase).</p>'
+    +'</div></div>';
+}
+function startScreen(){
+  let picks=S.caregivers.map(n=>'<button data-action="pickCg" data-n="'+attr(n)+'" class="ptab '+(S.caregiver===n?'on':'')+'">'+htmlEsc(n)+'</button>').join('');
+  return '<div class="screen pad" style="padding-top:30px;padding-bottom:24px">'
+    +'<div style="color:var(--teal);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase">Service de soins</div>'
+    +'<div class="faint" style="font-size:13px;margin-top:2px">'+htmlEsc(S.service)+' · service <b>'+htmlEsc(S.serviceCode||'')+'</b> · <button data-action="changeService" style="color:var(--teal);font-weight:700">changer</button></div>'
+    +'<div style="flex:1;display:flex;flex-direction:column;justify-content:center">'
+      +'<div class="card" style="padding:18px"><div class="row" style="gap:12px;margin-bottom:16px"><div style="height:44px;width:44px;border-radius:12px;background:var(--tealSoft);color:var(--tealDark);display:flex;align-items:center;justify-content:center">'+ic('user',22,'var(--tealDark)')+'</div><div style="font-size:16px;font-weight:700">Qui prend le service ?</div></div>'
+        +'<div class="lbl">Soignant</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+picks+'</div>'
+        +'<input id="cgName" class="ti" placeholder="…ou tapez un nom" value="'+attr(S.caregiver)+'" /></div>'
+      +'<p class="faint" style="font-size:12.5px;margin-top:14px;line-height:1.5">Patients enregistrés sous <b>surnom</b>. Le détail réel reste dans le dossier de l\'établissement.</p>'
+    +'</div>'
+    +'<button id="enterBtn" class="btn-primary" data-action="enter" disabled>Entrer dans le couloir '+ic('chevR',20,'#fff')+'</button>'
+  +'</div>';
+}
+function updateStart(){ const b=document.getElementById('enterBtn'); if(b) b.disabled=!S.caregiver.trim(); }
+
+function boardScreen(){
+  let tabs=S.periods.map(p=>'<button data-action="period" data-p="'+p.id+'" class="ptab '+(S.period===p.id?'on':'')+'" style="display:inline-flex;align-items:center;gap:6px">'+ic(p.icon||'dot',15,S.period===p.id?'#fff':'var(--muted)')+htmlEsc(p.label)+'</button>').join('');
+  let doors=S.rooms.map(r=>{ const col=roomColor(r,S.period); const s=STATUS[col];
+    let pts=r.patients.length?r.patients.map(p=>'<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink)">'+statusDot(patientColor(p,S.period),8)+htmlEsc(p.nick)+'</span>').join('<br>'):'<span class="faint" style="font-size:12px">Chambre vide</span>';
+    const f=roomFrac(r,S.period); const frac=r.patients.length?(f.en?f.hd+'/'+f.en:'—'):'';
+    return '<button data-action="openRoom" data-id="'+r.id+'" style="position:relative;text-align:left;border-radius:16px;padding:14px 14px 12px 20px;background:'+s.soft+';border:1px solid '+s.c+'33;min-height:128px;display:flex;flex-direction:column;gap:8px">'
+      +'<span style="position:absolute;left:8px;top:14px;bottom:12px;width:5px;border-radius:4px;background:'+s.c+'"></span>'
+      +'<span class="row" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:7px">'+ic('door',18,s.c)+'<b style="font-size:20px">'+htmlEsc(r.name)+'</b></span>'+(frac?'<span style="font-size:12px;font-weight:700;color:'+s.c+'">'+frac+'</span>':'')+'</span>'
+      +'<span style="line-height:1.5;flex:1">'+pts+'</span><span class="tag" style="background:'+s.c+';color:#fff;align-self:flex-start">'+s.label+'</span></button>';
+  }).join('');
+  const attCount=S.rooms.reduce((a,r)=>a+r.patients.filter(p=>p.attention).length,0);
+  let alertPanel='';
+  if(S.showAlerts){ let items=S.rooms.flatMap(r=>r.patients.filter(p=>p.attention).map(p=>({r:r.name,n:p.nick,rid:r.id,pid:p.id})));
+    let body=items.length?items.map(a=>'<button data-action="jump" data-r="'+a.rid+'" data-p="'+a.pid+'" style="width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:'+STATUS.violet.soft+';display:flex;align-items:center;gap:8px;margin-bottom:6px">'+ic('alert',16,STATUS.violet.c)+'<span style="font-size:13.5px;font-weight:600">'+htmlEsc(a.n)+'</span><span class="faint" style="font-size:12px">· Ch. '+htmlEsc(a.r)+'</span></button>').join(''):'<div class="faint" style="font-size:13px;padding:6px">Aucune attention en cours.</div>';
+    alertPanel='<div class="card" style="margin:0 18px 6px;padding:12px"><div class="lbl" style="margin-bottom:8px">Attentions en cours</div>'+body+'</div>'; }
+  return '<div class="screen"><div class="header"><div class="row" style="justify-content:space-between">'
+    +'<div><div style="font-size:18px;font-weight:800">Couloir</div><div class="muted" style="font-size:12.5px">'+ic('user',13,'var(--muted)')+' '+htmlEsc(S.caregiver)+' · '+htmlEsc(periodLabel(S.period))+'</div></div>'
+    +'<div class="row" style="gap:8px"><button class="iconbtn" data-action="toggleAlerts" style="position:relative">'+ic('bell',18,attCount?STATUS.violet.c:'var(--muted)')+(attCount?'<span style="position:absolute;top:-4px;right:-4px;background:'+STATUS.violet.c+';color:#fff;font-size:10px;font-weight:700;height:17px;min-width:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px">'+attCount+'</span>':'')+'</button>'
+    +'<button class="iconbtn" data-action="toSettings">'+ic('settings',18,'var(--muted)')+'</button></div></div>'
+    +'<div style="display:flex;gap:8px;overflow-x:auto;margin-top:12px;padding-bottom:2px">'+tabs+'</div></div>'+alertPanel
+    +'<div class="scroll pad" style="padding-top:14px;padding-bottom:18px"><div class="grid">'+doors+'</div>'
+      +'<div class="card" style="margin-top:14px;padding:12px 14px"><div class="lbl" style="margin-bottom:8px">Légende des portes</div>'+['grey','green','orange','red','violet'].map(k=>'<span style="display:inline-flex;align-items:center;gap:6px;margin:0 12px 6px 0;font-size:12.5px">'+statusDot(k,11)+STATUS[k].label+'</span>').join('')+'</div>'
+      +'<button data-action="exportDay" class="btn-soft" style="margin-top:14px">'+ic('file',18,'var(--teal)')+'Bilan / fin de journée</button>'
+      +'<p class="faint" style="font-size:11px;text-align:center;margin-top:8px;line-height:1.45">Le bilan permet d\'exporter en PDF, de sauvegarder, et de réinitialiser pour une nouvelle journée.</p>'
+    +'</div></div>';
+}
+
+function roomScreen(){
+  const r=findRoom(S.curRoom); if(!r){ go('board'); return ''; }
+  let cards = r.patients.length ? r.patients.map(p=>{
+    const col=patientColor(p,S.period); const s=STATUS[col]; const {en,hd}=completion(p,S.period); const pp=ensurePP(p,S.period);
+    const frac=pp.reverted?'versé dans Sillage':(en?hd+'/'+en+' soins':'aucun soin');
+    const lo=lockedByOther(p.id)?lockOf(p.id):null;
+    return '<button data-action="openPatient" data-p="'+p.id+'" style="width:100%;text-align:left;border-radius:16px;padding:16px;background:'+s.soft+';border:1px solid '+s.c+'33;display:flex;align-items:center;gap:14px;margin-bottom:12px">'
+      +'<span style="height:48px;width:48px;border-radius:999px;background:'+s.c+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">'+htmlEsc((p.nick||'?').slice(0,2))+'</span>'
+      +'<span style="flex:1"><span style="display:block;font-size:16px;font-weight:700">'+htmlEsc(p.nick)+'</span><span class="muted" style="font-size:12.5px">'+frac+(p.attention?' · attention':'')+(lo?' · <span style="color:'+STATUS.violet.c+';font-weight:700">✋ '+htmlEsc(lo.by)+'</span>':'')+'</span></span>'
+      +'<span class="tag" style="background:'+s.c+';color:#fff">'+s.label+'</span>'+ic('chevR',20,s.c)+'</button>';
+  }).join('') : '<div class="card" style="padding:24px;text-align:center"><div class="faint" style="font-size:14px">Chambre vide.</div></div>';
+  return '<div class="screen"><div class="header"><div class="row" style="gap:12px">'
+    +'<button class="iconbtn" data-action="back">'+ic('chevL',20,'var(--muted)')+'</button>'
+    +'<div style="flex:1"><div style="font-size:18px;font-weight:800">'+ic('door',18,'var(--teal)')+' Chambre '+htmlEsc(r.name)+'</div>'
+    +'<div class="muted" style="font-size:12.5px">'+r.patients.length+' patient'+(r.patients.length>1?'s':'')+' · '+htmlEsc(periodLabel(S.period))+'</div></div></div></div>'
+    +'<div class="scroll pad" style="padding-top:14px;padding-bottom:18px">'+cards
+    +'<button data-action="addPatientPrompt" class="btn-soft" style="margin-top:4px">'+ic('plus',18,'var(--teal)')+'Ajouter un patient</button></div></div>';
+}
+
+function patientScreen(){
+  const r=findRoom(S.curRoom), p=findPatient(); if(!p){ go('room'); return ''; }
+  const pp=ensurePP(p,S.period); const col=patientColor(p,S.period); const s=STATUS[col]; const {en,hd}=completion(p,S.period);
+  const ro=lockedByOther(p.id); const lk=lockOf(p.id);
+  const roStyle=ro?'pointer-events:none;opacity:.5;':''; const roAttr=ro?' readonly':'';
+  const cares=S.careLists[S.period]||[];
+  let rows=cares.map(c=>{ const dis=!!pp.disabled[c.id]; let inner='';
+    if(!dis){
+      if(c.choices&&c.choices.length){ inner+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">'+c.choices.map(ch=>{ const on=pp.status[c.id]===ch; const cc=choiceColor(ch);
+        return '<button data-action="setStatus" data-c="'+c.id+'" data-s="'+attr(ch)+'" style="flex:1;min-width:70px;height:34px;border-radius:9px;font-size:13px;font-weight:700;border:1px solid '+(on?cc:'var(--line)')+';background:'+(on?cc:'#fff')+';color:'+(on?'#fff':'var(--muted)')+'">'+htmlEsc(ch)+'</button>'; }).join('')+'</div>'; }
+      if(c.comment){ inner+='<div class="row" style="gap:8px;margin-top:9px;align-items:flex-start">'
+        +'<textarea id="cc_'+c.id+'" data-grow="1" class="grow" rows="1"'+roAttr+' placeholder="Commentaire du soin…" style="flex:1;min-height:42px;font-size:13.5px;border:1px solid var(--line);border-radius:10px;padding:10px;outline:none;color:var(--ink);line-height:1.4">'+htmlEsc(pp.careComment[c.id]||'')+'</textarea>'
+        +'<button id="ccm_'+c.id+'" data-action="careMic" data-c="'+c.id+'" style="height:42px;width:46px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--tealSoft);color:var(--tealDark)">'+ic('mic',18,'var(--tealDark)')+'</button></div>'; }
+    }
+    return '<div style="padding:12px 14px;border-top:1px solid var(--line);opacity:'+(dis?'.55':'1')+'">'
+      +'<div class="row" style="justify-content:space-between;gap:10px"><div style="font-size:15px;font-weight:600;'+(dis?'text-decoration:line-through':'')+'">'+htmlEsc(c.label)+(dis?' <span class="faint" style="font-size:12px;font-weight:500">— non requis</span>':'')+'</div>'
+      +'<button data-action="disableCare" data-c="'+c.id+'" title="Non requis" style="height:32px;width:32px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+(dis?'var(--tealSoft)':'var(--chip)')+'">'+ic(dis?'plus':'ban',15,dis?'var(--teal)':'var(--faint)')+'</button></div>'+inner+'</div>';
+  }).join('');
+  const pct=en?Math.round(hd/en*100):100;
+  return '<div class="screen"><div class="header"><div class="row" style="gap:12px">'
+    +'<button class="iconbtn" data-action="back">'+ic('chevL',20,'var(--muted)')+'</button>'
+    +'<span style="height:42px;width:42px;border-radius:999px;background:'+s.c+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">'+htmlEsc((p.nick||'?').slice(0,2))+'</span>'
+    +'<div style="flex:1"><div style="font-size:17px;font-weight:800">'+htmlEsc(p.nick)+'</div><div class="muted" style="font-size:12.5px">Ch. '+htmlEsc(r.name)+' · '+htmlEsc(periodLabel(S.period))+'</div></div>'
+    +'<span class="tag" style="background:'+s.c+';color:#fff">'+s.label+'</span></div>'
+    +'<div class="row" style="gap:10px;margin-top:12px"><div style="flex:1;height:8px;border-radius:999px;background:var(--chip);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+STATUS.green.c+'"></div></div><span style="font-size:12.5px;font-weight:700;color:var(--muted)">'+hd+'/'+en+'</span></div></div>'
+    +'<div class="scroll pad" style="padding-top:14px;padding-bottom:18px">'
+      +(ro?'<div style="background:'+STATUS.violet.soft+';color:'+STATUS.violet.c+';font-size:13px;font-weight:600;padding:11px 14px;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><span>✋ Modifié par '+htmlEsc(lk?lk.by:'?')+' en ce moment</span><button data-action="takeLock" style="background:'+STATUS.violet.c+';color:#fff;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:999px;white-space:nowrap">Reprendre la main</button></div>'
+          :(S._heldPid===p.id?'<div class="faint" style="font-size:11.5px;margin-bottom:10px">'+ic('user',12,'var(--faint)')+' Vous modifiez ce patient — verrou actif.</div>':''))
+      +'<div class="row" style="margin-bottom:10px;'+roStyle+'"><button data-action="attention" style="height:46px;flex:1;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:14px;background:'+(p.attention?STATUS.violet.c:STATUS.violet.soft)+';color:'+(p.attention?'#fff':STATUS.violet.c)+'" class="'+(p.attention?'glowv':'')+'">'+ic('alert',18,p.attention?'#fff':STATUS.violet.c)+(p.attention?'Attention particulière':'Marquer une attention')+'</button></div>'
+      +'<div class="card" style="overflow:hidden;'+roStyle+'"><div class="row" style="justify-content:space-between;padding:12px 14px"><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)">Soins · '+htmlEsc(periodLabel(S.period))+'</span><button data-action="toutFait" style="font-size:12.5px;font-weight:700;color:var(--teal)">Tout fait</button></div>'+rows+'</div>'
+      +'<div class="card" style="margin-top:14px;padding:14px;'+roStyle+'"><div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="lbl" style="margin:0">'+ic('comment',14,'var(--faint)')+' Commentaire général</div>'
+        +'<button id="micCom" data-action="micComment" style="font-size:12.5px;font-weight:700;color:var(--teal);display:flex;align-items:center;gap:5px">'+ic('mic',14,'var(--teal)')+'Dicter</button></div>'
+        +'<textarea id="comTa" data-grow="1" class="grow" rows="2"'+roAttr+' placeholder="Observations libres…" style="width:100%;font-size:14px;border:1px solid var(--line);border-radius:10px;padding:10px;outline:none;color:var(--ink);line-height:1.45;min-height:64px">'+htmlEsc(pp.comment)+'</textarea><p class="faint" style="font-size:11px;margin-top:6px;line-height:1.45">Dictée : touchez « Dicter », dites une phrase, elle s\'ajoute. Re-touchez pour la suivante.</p></div>'
+      +(p.attention?'<button data-action="notify" id="notifyBtn" class="btn-soft" style="margin-top:12px;border-color:'+STATUS.violet.c+'55;color:'+STATUS.violet.c+';'+roStyle+'">'+ic('send',18,STATUS.violet.c)+'Notifier l\'équipe</button>':'')
+    +'</div></div>';
+}
+
+function settingsScreen(){
+  let tabBtns=[['general','Général'],['periodes','Périodes'],['soins','Soins'],['chambres','Chambres']].map(t=>'<button data-action="setTab" data-t="'+t[0]+'" class="ptab '+(S.settingsTab===t[0]?'on':'')+'">'+t[1]+'</button>').join('');
+  let body='';
+  if(S.settingsTab==='general'){
+    let cgs=S.caregivers.map((n,i)=>'<div class="row" style="gap:8px;margin-bottom:8px"><input id="cgEdit_'+i+'" class="ti" style="height:44px" value="'+attr(n)+'" /><button data-action="delCg" data-i="'+i+'" style="height:44px;width:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+STATUS.red.soft+'">'+ic('trash',16,STATUS.red.c)+'</button></div>').join('');
+    body='<div class="card" style="padding:14px;margin-bottom:14px"><div class="lbl">Nom du service</div><input id="serviceName" class="ti" value="'+attr(S.service)+'" placeholder="Ex. Gériatrie B" /></div>'
+      +'<div class="card" style="padding:14px;margin-bottom:14px"><div class="lbl">Soignants</div>'+cgs
+        +'<div class="row" style="gap:8px;margin-top:4px"><input id="newCg" class="ti" style="height:44px" placeholder="Nouveau soignant" /><button data-action="addCg" style="height:44px;padding:0 16px;border-radius:10px;background:var(--teal);color:#fff;font-weight:700">Ajouter</button></div></div>'
+      +'<div class="card" style="padding:14px"><div class="lbl">Sauvegarde &amp; restauration</div>'
+        +'<p class="faint" style="font-size:12px;line-height:1.5;margin-bottom:10px">Exporte un fichier de toutes les données (récupérable en cas d\'erreur). Le PDF, lui, sert d\'archive lisible.</p>'
+        +'<button data-action="backupExport" class="btn-soft" style="margin-bottom:8px">'+ic('upload',18,'var(--teal)')+'Exporter une sauvegarde (.json)</button>'
+        +'<label class="btn-soft" style="cursor:pointer">'+ic('file',18,'var(--teal)')+'Importer une sauvegarde<input id="restoreFile" type="file" accept=".json,application/json" style="display:none" /></label></div>';
+  } else if(S.settingsTab==='periodes'){
+    let list=S.periods.map((p,i)=>'<div class="card" style="padding:12px 14px;margin-bottom:8px"><div class="row" style="gap:8px"><span style="height:36px;width:36px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--tealSoft);color:var(--tealDark)">'+ic(p.icon||'dot',18,'var(--tealDark)')+'</span><input id="perEdit_'+p.id+'" class="ti" style="height:42px" value="'+attr(p.label)+'" /><button data-action="delPeriod" data-p="'+p.id+'" '+(S.periods.length<=1?'disabled style="opacity:.4;"':'')+' style="height:42px;width:42px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+STATUS.red.soft+'">'+ic('trash',16,STATUS.red.c)+'</button></div></div>').join('');
+    body='<div style="background:var(--tealSoft);color:var(--tealDark);font-size:12.5px;padding:10px 14px;border-radius:12px;margin-bottom:12px">Les périodes structurent la journée. Chaque période a sa propre liste de soins (onglet Soins).</div>'
+      +list
+      +'<div class="card" style="padding:14px;display:flex;gap:8px;align-items:center"><input id="newPeriod" class="ti" style="height:44px" placeholder="Nouvelle période (ex. Goûter)" /><button data-action="addPeriod" style="height:44px;padding:0 16px;border-radius:10px;background:var(--teal);color:#fff;font-weight:700">Ajouter</button></div>';
+  } else if(S.settingsTab==='soins'){
+    let pTabs=S.periods.map(p=>'<button data-action="setSP" data-p="'+p.id+'" class="ptab '+(S.settingsPeriod===p.id?'on':'')+'">'+htmlEsc(p.label)+'</button>').join('');
+    const cares=S.careLists[S.settingsPeriod]||[];
+    let cards=cares.map(c=>{ const hasCh=c.choices&&c.choices.length;
+      let chips=hasCh?c.choices.map((ch,i)=>'<span style="display:inline-flex;align-items:center;gap:5px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 11px;font-size:12.5px;font-weight:600;margin:0 6px 6px 0">'+htmlEsc(ch)+'<button data-action="delChoice" data-c="'+c.id+'" data-i="'+i+'" style="height:18px;width:18px;border-radius:999px;background:#fff;display:flex;align-items:center;justify-content:center">'+ic('x',11,'var(--faint)')+'</button></span>').join(''):'';
+      return '<div class="card" style="padding:14px;margin-bottom:10px">'
+        +'<div class="row" style="gap:8px;margin-bottom:10px"><input id="carelabel_'+c.id+'" class="ti" style="height:42px;font-size:15px;font-weight:600" value="'+attr(c.label)+'" /><button data-action="delCare" data-c="'+c.id+'" style="height:42px;width:42px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+STATUS.red.soft+'">'+ic('trash',16,STATUS.red.c)+'</button></div>'
+        +'<div class="row" style="gap:8px;margin-bottom:'+(hasCh?'10px':'0')+'"><button data-action="toggleChoix" data-c="'+c.id+'" class="ptab '+(hasCh?'on':'')+'" style="flex:1">Choix</button><button data-action="toggleComment" data-c="'+c.id+'" class="ptab '+(c.comment?'on':'')+'" style="flex:1">Commentaire + micro</button></div>'
+        +(hasCh?('<div>'+chips+'</div><div class="row" style="gap:8px;margin-top:4px"><input id="addchoice_'+c.id+'" class="ti" style="height:40px;font-size:13.5px" placeholder="Nouveau choix (ex. Refusé)" /><button data-action="addChoice" data-c="'+c.id+'" style="height:40px;padding:0 14px;border-radius:10px;background:var(--tealSoft);color:var(--tealDark);font-weight:700;font-size:13px">+</button></div>'):'')
+      +'</div>';
+    }).join('');
+    body='<div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:12px">'+pTabs+'</div>'
+      +'<div style="background:var(--tealSoft);color:var(--tealDark);font-size:12.5px;padding:10px 14px;border-radius:12px;margin-bottom:12px;display:flex;gap:8px"><span style="flex-shrink:0">'+ic('sparkles',15,'var(--tealDark)')+'</span>Chaque soin = des <b>choix</b> et/ou un <b>commentaire dicté</b>. Liste valable pour toutes les chambres.</div>'
+      +cards
+      +'<div class="card" style="padding:14px;display:flex;gap:8px;align-items:center"><input id="newCareLabel" class="ti" style="height:44px" placeholder="Nom du nouveau soin" /><button data-action="addCare" style="height:44px;padding:0 16px;border-radius:10px;background:var(--teal);color:#fff;font-weight:700">Ajouter</button></div>';
+  } else {
+    let rooms=S.rooms.map(r=>{ let pts=r.patients.map(p=>'<div class="row" style="gap:8px;padding:6px 0"><span style="flex:1;font-size:14px">'+statusDot(patientColor(p,S.period))+' '+htmlEsc(p.nick)+'</span><button data-action="delPatient" data-r="'+r.id+'" data-p="'+p.id+'" style="font-size:12px;color:'+STATUS.red.c+';font-weight:600">retirer</button></div>').join('')||'<div class="faint" style="font-size:12.5px;padding:4px 0">Chambre vide</div>';
+      return '<div class="card" style="padding:14px;margin-bottom:10px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><div style="font-weight:700;font-size:15px">'+ic('door',16,'var(--teal)')+' Chambre '+htmlEsc(r.name)+'</div><button data-action="delRoom" data-r="'+r.id+'" style="font-size:12px;color:'+STATUS.red.c+';font-weight:600">supprimer</button></div>'+pts
+        +'<div class="row" style="gap:8px;margin-top:10px"><input class="ti" id="np_'+r.id+'" style="height:42px;font-size:14px" placeholder="Surnom du patient" /><button data-action="addPatient" data-r="'+r.id+'" style="height:42px;padding:0 14px;border-radius:10px;background:var(--tealSoft);color:var(--tealDark);font-weight:700;font-size:13px">Ajouter</button></div></div>';
+    }).join('');
+    body='<div style="background:#F7EBD3;color:#8a5a12;font-size:12.5px;padding:10px 14px;border-radius:12px;margin-bottom:12px">Patients enregistrés sous <b>surnom</b> uniquement.</div>'+rooms
+      +'<div class="card" style="padding:14px;display:flex;gap:8px;align-items:center"><input id="newRoom" class="ti" style="height:44px" placeholder="N° de chambre" /><button data-action="addRoom" style="height:44px;padding:0 16px;border-radius:10px;background:var(--teal);color:#fff;font-weight:700">Ajouter</button></div>';
+  }
+  return '<div class="screen"><div class="pad row" style="padding-top:26px;padding-bottom:10px;gap:12px"><button class="iconbtn" data-action="back">'+ic('chevL',20,'var(--muted)')+'</button><div style="font-size:18px;font-weight:800">Réglages</div></div>'
+    +'<div class="pad" style="display:flex;gap:8px;margin-bottom:8px;overflow-x:auto">'+tabBtns+'</div>'
+    +'<div class="scroll pad" style="padding-top:8px;padding-bottom:20px">'+body+'</div></div>';
+}
+
+/* ----------------------------- new day reset ----------------------------- */
+function doReset(){
+  S.rooms.forEach(r=>r.patients.forEach(p=>{ p.attention=false;
+    Object.keys(p.periods||{}).forEach(per=>{ const pp=p.periods[per]; pp.status={}; pp.careComment={}; pp.comment=''; pp.reverted=false; /* on garde pp.disabled (config par chambre) */ });
+  }));
+  S.alerts=[]; save(); go('board');
+}
+function newDay(){
+  if(!window.confirm('Nouvelle journée : un PDF et une sauvegarde vont être générés, puis les choix et commentaires du jour seront effacés (les soins requis/non requis par chambre sont conservés). Continuer ?')) return;
+  backupDownload();
+  window.print();
+  doReset();
+}
+function backupDownload(){ try{
+  const data={app:'soins-couloir',v:1,date:Date.now(),service:S.service,caregivers:S.caregivers,periods:S.periods,careLists:S.careLists,rooms:S.rooms,alerts:S.alerts};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='soins-'+dayKey(Date.now())+'.json'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}catch(e){} }
+function importBackup(file){ const r=new FileReader();
+  r.onload=()=>{ try{ const d=JSON.parse(r.result);
+    if(d&&d.rooms&&d.careLists){ if(d.service)S.service=d.service; if(d.caregivers)S.caregivers=d.caregivers; if(d.periods&&d.periods.length)S.periods=d.periods; S.careLists=d.careLists; S.rooms=d.rooms; S.alerts=d.alerts||[];
+      if(!S.periods.find(p=>p.id===S.period))S.period=S.periods[0].id; if(!S.periods.find(p=>p.id===S.settingsPeriod))S.settingsPeriod=S.periods[0].id;
+      save(); window.alert('Sauvegarde restaurée.'); go('board'); }
+    else window.alert('Fichier non reconnu.'); }
+    catch(e){ window.alert('Fichier illisible.'); } };
+  r.readAsText(file); }
+
+/* ----------------------------- export / bilan PDF ----------------------------- */
+function careExportLine(c,pp){
+  const st=pp.status?pp.status[c.id]:null;
+  const cm=(pp.careComment&&pp.careComment[c.id]||'').trim();
+  if(!st && !cm) return null;
+  let s=htmlEsc(c.label);
+  if(st) s+=' : <b>'+htmlEsc(st)+'</b>';
+  if(cm) s+=(st?' — ':' : ')+htmlEsc(cm);
+  return s;
+}
+function patientHasData(p){
+  return Object.keys(p.periods||{}).some(per=>{ const pp=p.periods[per]; if(!pp) return false;
+    if(pp.comment&&pp.comment.trim()) return true;
+    return (S.careLists[per]||[]).some(c=>(pp.status&&pp.status[c.id])||(pp.careComment&&pp.careComment[c.id]&&pp.careComment[c.id].trim()));
+  }) || p.attention;
+}
+function exportScreen(){
+  const dateStr=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  let blocks='';
+  S.rooms.forEach(r=>{ const pats=r.patients.filter(patientHasData); if(!pats.length) return;
+    pats.forEach(p=>{
+      let perBlocks='';
+      S.periods.forEach(per=>{ const pp=p.periods[per.id]; if(!pp) return;
+        const lines=(S.careLists[per.id]||[]).map(c=>careExportLine(c,pp)).filter(Boolean);
+        const gc=(pp.comment||'').trim();
+        if(!lines.length && !gc) return;
+        perBlocks+='<div style="margin:6px 0 4px"><div style="font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.04em">'+htmlEsc(per.label)+'</div>'
+          +lines.map(l=>'<div style="font-size:13px;padding:1px 0">• '+l+'</div>').join('')
+          +(gc?'<div style="font-size:13px;padding:2px 0;font-style:italic">Commentaire : '+htmlEsc(gc)+'</div>':'')+'</div>';
+      });
+      blocks+='<div class="card" style="padding:14px;margin-bottom:10px;break-inside:avoid">'
+        +'<div class="row" style="justify-content:space-between"><div style="font-weight:800;font-size:15px">'+htmlEsc(p.nick)+(p.attention?' <span style="color:'+STATUS.violet.c+'">⚠ attention</span>':'')+'</div><div class="faint" style="font-size:12.5px">Chambre '+htmlEsc(r.name)+'</div></div>'
+        +(perBlocks||'<div class="faint" style="font-size:13px">Aucun soin renseigné</div>')+'</div>';
+    });
+  });
+  if(!blocks) blocks='<div class="card" style="padding:24px;text-align:center"><div class="faint">Aucune donnée à exporter pour le moment.</div></div>';
+  const pending=S.rooms.filter(r=>{ const c=roomColor(r,S.period); return c==='red'||c==='orange'; }).length;
+  const warn = pending ? '<div style="background:'+STATUS.orange.soft+';color:#8a5a12;font-size:12.5px;font-weight:600;padding:10px 14px;border-radius:12px;margin-bottom:10px">⚠ La journée ne semble pas terminée : '+pending+' chambre(s) avec des soins en attente sur « '+htmlEsc(periodLabel(S.period))+' ».</div>' : '';
+  return '<div class="screen">'
+    +'<div class="header no-print"><div class="row" style="gap:12px"><button class="iconbtn" data-action="back">'+ic('chevL',20,'var(--muted)')+'</button>'
+      +'<div style="flex:1"><div style="font-size:18px;font-weight:800">Bilan de la journée</div><div class="faint" style="font-size:12.5px;text-transform:capitalize">'+dateStr+'</div></div></div></div>'
+    +'<div class="scroll pad" style="padding-top:14px;padding-bottom:16px">'
+      +'<div style="margin-bottom:12px"><div style="font-size:20px;font-weight:800">Transmissions — '+htmlEsc(S.service)+'</div><div class="muted" style="font-size:13px;text-transform:capitalize">'+dateStr+' · soignant : '+htmlEsc(S.caregiver||'—')+'</div></div>'
+      +blocks+'</div>'
+    +'<div class="footer no-print"><button class="btn-primary" data-action="printDay">'+ic('file',20,'#fff')+' Imprimer / Enregistrer en PDF</button>'
+      +'<button data-action="backupExport" class="btn-soft" style="margin-top:10px">'+ic('upload',18,'var(--teal)')+'Sauvegarde de secours (.json)</button>'
+      +'<div style="height:1px;background:var(--line);margin:14px 0"></div>'+warn
+      +'<button data-action="newDay" class="btn-soft" style="border-color:'+STATUS.red.c+'55;color:'+STATUS.red.c+'">'+ic('rotate',18,STATUS.red.c)+'Nouvelle journée (réinitialiser)</button>'
+      +'<p class="faint" style="font-size:11px;text-align:center;margin-top:8px;line-height:1.45">Le PDF et une sauvegarde sont générés automatiquement. Les choix et commentaires sont effacés ; les soins requis/non requis par chambre sont conservés.</p></div>'
+  +'</div>';
+}
+
+/* ----------------------------- events ----------------------------- */
+app.addEventListener('input', e=>{ const t=e.target; if(!t) return;
+  if(t.id==='cgName'){ S.caregiver=t.value; updateStart(); }
+  else if(t.id==='comTa'){ if(lockedByOther(S.curPatient)){ autoGrow(t); return; } ensureEditable(); const p=findPatient(); if(p){ ensurePP(p,S.period).comment=t.value; save(); } autoGrow(t); }
+  else if(t.id&&t.id.indexOf('cc_')===0){ if(lockedByOther(S.curPatient)){ autoGrow(t); return; } ensureEditable(); const p=findPatient(); if(p){ ensurePP(p,S.period).careComment[t.id.slice(3)]=t.value; save(); } autoGrow(t); }
+  else if(t.id&&t.id.indexOf('carelabel_')===0){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===t.id.slice(10)); if(c){ c.label=t.value; save(); } }
+  else if(t.id==='serviceName'){ S.service=t.value; save(); }
+  else if(t.id&&t.id.indexOf('cgEdit_')===0){ const i=+t.id.slice(7); if(S.caregivers[i]!=null){ S.caregivers[i]=t.value; save(); } }
+  else if(t.id&&t.id.indexOf('perEdit_')===0){ const per=S.periods.find(p=>p.id===t.id.slice(8)); if(per){ per.label=t.value; save(); } }
+});
+app.addEventListener('change', e=>{ if(e.target&&e.target.id==='restoreFile'){ const f=e.target.files&&e.target.files[0]; if(f) importBackup(f); } });
+app.addEventListener('click', e=>{ const el=e.target.closest('[data-action]'); if(!el) return; const a=el.getAttribute('data-action');
+  if(a==='pickCg'){ S.caregiver=el.getAttribute('data-n'); render(); }
+  else if(a==='enterService'){ const v=(document.getElementById('svcCode').value||'').trim().toUpperCase(); if(v) connectService(v); }
+  else if(a==='changeService'){ S.screen='service'; render(); }
+  else if(a==='enter'){ if(S.caregiver.trim()){ save(); go('board'); } }
+  else if(a==='period'){ S.period=el.getAttribute('data-p'); save(); render(); }
+  else if(a==='toSettings'){ S.settingsTab='general'; go('settings'); }
+  else if(a==='toggleAlerts'){ S.showAlerts=!S.showAlerts; render(); }
+  else if(a==='jump'){ S.curRoom=el.getAttribute('data-r'); S.curPatient=el.getAttribute('data-p'); S.showAlerts=false; if(!lockedByOther(S.curPatient)) acquireLock(S.curPatient); go('patient'); }
+  else if(a==='openRoom'){ S.curRoom=el.getAttribute('data-id'); go('room'); }
+  else if(a==='openPatient'){ S.curPatient=el.getAttribute('data-p'); if(!lockedByOther(S.curPatient)) acquireLock(S.curPatient); go('patient'); }
+  else if(a==='takeLock'){ takeLock(S.curPatient); render(); }
+  else if(a==='back'){ if(S.screen==='room') go('board'); else if(S.screen==='patient') go('room'); else go('board'); }
+  else if(a==='setStatus'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); const c=el.getAttribute('data-c'),st=el.getAttribute('data-s'); if(pp.status[c]===st) delete pp.status[c]; else pp.status[c]=st; pp.reverted=false; save(); render(); }
+  else if(a==='toutFait'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); (S.careLists[S.period]||[]).forEach(c=>{ if(pp.disabled[c.id])return; if(c.choices&&c.choices.length) pp.status[c.id]=c.choices[0]; }); pp.reverted=false; save(); render(); }
+  else if(a==='disableCare'){ if(!ensureEditable())return; const p=findPatient(); const pp=ensurePP(p,S.period); const c=el.getAttribute('data-c'); pp.disabled[c]=!pp.disabled[c]; if(pp.disabled[c]){ delete pp.status[c]; delete pp.careComment[c]; } save(); render(); }
+  else if(a==='careMic'){ if(!ensureEditable())return; careMic(el.getAttribute('data-c')); }
+  else if(a==='micComment'){ if(!ensureEditable())return; generalMic(); }
+  else if(a==='attention'){ if(!ensureEditable())return; const p=findPatient(); p.attention=!p.attention; save(); render(); }
+  else if(a==='notify'){ if(!ensureEditable())return; const p=findPatient(),r=findRoom(S.curRoom); S.alerts.unshift({room:r.name,nick:p.nick,ts:Date.now()}); save(); flash(document.getElementById('notifyBtn'), ic('check',18,STATUS.violet.c)+' Alerte envoyée à l\'équipe'); }
+  else if(a==='revert'){ /* remplacé par export PDF */ }
+  else if(a==='exportDay'){ go('export'); }
+  else if(a==='printDay'){ window.print(); }
+  else if(a==='newDay'){ newDay(); }
+  else if(a==='backupExport'){ backupDownload(); }
+  else if(a==='addCg'){ const v=(document.getElementById('newCg').value||'').trim(); if(!v)return; S.caregivers.push(v); save(); render(); }
+  else if(a==='delCg'){ S.caregivers.splice(+el.getAttribute('data-i'),1); save(); render(); }
+  else if(a==='addPeriod'){ const v=(document.getElementById('newPeriod').value||'').trim(); if(!v)return; const id='per'+Date.now(); S.periods.push({id,label:v,icon:'dot'}); S.careLists[id]=[]; save(); render(); }
+  else if(a==='delPeriod'){ if(S.periods.length<=1)return; const id=el.getAttribute('data-p'); if(!window.confirm('Supprimer la période « '+periodLabel(id)+' » et sa liste de soins ?'))return; S.periods=S.periods.filter(p=>p.id!==id); delete S.careLists[id]; if(S.period===id)S.period=S.periods[0].id; if(S.settingsPeriod===id)S.settingsPeriod=S.periods[0].id; save(); render(); }
+  else if(a==='addPatientPrompt'){ S.settingsTab='chambres'; go('settings'); }
+  else if(a==='setTab'){ S.settingsTab=el.getAttribute('data-t'); render(); }
+  else if(a==='setSP'){ S.settingsPeriod=el.getAttribute('data-p'); render(); }
+  else if(a==='delCare'){ const c=el.getAttribute('data-c'); S.careLists[S.settingsPeriod]=S.careLists[S.settingsPeriod].filter(x=>x.id!==c); save(); render(); }
+  else if(a==='addCare'){ const l=(document.getElementById('newCareLabel').value||'').trim(); if(!l)return; S.careLists[S.settingsPeriod].push({id:'c'+Date.now(),label:l,choices:D3.slice(),comment:false}); save(); render(); }
+  else if(a==='toggleChoix'){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===el.getAttribute('data-c')); if(!c)return; if(c.choices&&c.choices.length){ c.choices=null; if(!c.comment) c.comment=true; } else c.choices=D3.slice(); save(); render(); }
+  else if(a==='toggleComment'){ const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===el.getAttribute('data-c')); if(!c)return; c.comment=!c.comment; if(!c.comment&&!(c.choices&&c.choices.length)) c.choices=['Fait','Refusé']; save(); render(); }
+  else if(a==='addChoice'){ const cid=el.getAttribute('data-c'); const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===cid); const inp=document.getElementById('addchoice_'+cid); const v=(inp.value||'').trim(); if(!c||!v)return; c.choices=c.choices||[]; c.choices.push(v); save(); render(); }
+  else if(a==='delChoice'){ const cid=el.getAttribute('data-c'); const c=(S.careLists[S.settingsPeriod]||[]).find(x=>x.id===cid); if(!c||!c.choices)return; c.choices.splice(+el.getAttribute('data-i'),1); save(); render(); }
+  else if(a==='addRoom'){ const n=(document.getElementById('newRoom').value||'').trim(); if(!n)return; S.rooms.push({id:'r'+Date.now(),name:n,patients:[]}); save(); render(); }
+  else if(a==='delRoom'){ const r=el.getAttribute('data-r'); S.rooms=S.rooms.filter(x=>x.id!==r); save(); render(); }
+  else if(a==='addPatient'){ const rid=el.getAttribute('data-r'); const inp=document.getElementById('np_'+rid); const nick=(inp.value||'').trim(); if(!nick)return; findRoom(rid).patients.push({id:'p'+Date.now(),nick,attention:false,periods:{}}); save(); render(); }
+  else if(a==='delPatient'){ const rid=el.getAttribute('data-r'),pid=el.getAttribute('data-p'); const r=findRoom(rid); r.patients=r.patients.filter(x=>x.id!==pid); save(); render(); }
+});
+
+render();
+</script>
+</body>
+</html>
