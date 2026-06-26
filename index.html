@@ -595,6 +595,7 @@ app.addEventListener('click', e=>{ const el=e.target.closest('[data-action]'); i
 });
 
 render();
+if('serviceWorker' in navigator){ window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }); }
 </script>
 </body>
 </html>
